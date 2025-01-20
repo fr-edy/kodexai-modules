@@ -1,4 +1,5 @@
-import utilities
+import utilities.logger
+import utilities.networking
 
 
 class ScrapingFramework:
