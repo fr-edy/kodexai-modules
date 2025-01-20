@@ -1,5 +1,7 @@
 import utilities.logger
 import utilities.networking
+import utilities.html_parser
+import time
 
 
 class ScrapingFramework:
@@ -8,3 +10,6 @@ class ScrapingFramework:
         self.logger = utilities.logger.ConsoleLogger(id, self.debug)
         self.client = utilities.networking.Client(self.logger)
         self.client.init()
+
+    def retry_wait(self, seconds: int = 2) -> None:
+        time.sleep(seconds)
