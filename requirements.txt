@@ -1,0 +1,2 @@
+lxml==5.3.0
+tls-client==1.0.1
