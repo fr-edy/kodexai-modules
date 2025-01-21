@@ -13,3 +13,11 @@ class Publication:
         self.published_at = published_at
         self.web_url = web_url
         self.related_urls = related_urls
+
+    def json(self) -> dict:
+        return {
+            "web_title": self.web_title,
+            "published_at": self.published_at.isoformat() if self.published_at else None,
+            "web_url": self.web_url,
+            "related_urls": self.related_urls
+        }

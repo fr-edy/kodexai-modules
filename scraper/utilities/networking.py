@@ -72,26 +72,30 @@ class Response:
 
     def __init__(self, resp: Optional[response.Response]):
         self._response: Optional[response.Response] = resp
-        self._status_code: int = resp.status_code if resp else 0
-        self._text: Optional[str] = resp.text if resp else None
 
     def status_code(self) -> int:
         """
         Get the status code of the response.
         """
-        return self._status_code
+        return self._response.status_code if self._response else 0
 
     def ok(self) -> bool:
         """
         Get the status of the response.
         """
-        return self.status_code() == 200
-
+        return self._response.ok if self._response else False
+        
     def text(self) -> Optional[str]:
         """
         Get the text content of the response.
         """
-        return self._text
+        return self._response.text if self._response else None
+
+    def content(self) -> Optional[bytes]:
+        """
+        Get the content of the response.
+        """
+        return self._response.content if self._response else None
 
     def json(self) -> Optional[Dict[str, Any]]:
         """
