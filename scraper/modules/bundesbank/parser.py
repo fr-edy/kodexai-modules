@@ -1,114 +1,176 @@
-from models.publication import Publication # might be wrong import path
-import xml.etree.ElementTree as ET
+"""
+Bundesbank Article Parser Module
+Handles parsing of RSS feeds and web articles from Bundesbank website.
+
+Author: Your Name
+Date: YYYY-MM-DD
+"""
+
+import logging
+from typing import Optional, List
 from datetime import datetime
-from bs4 import BeautifulSoup
 from io import BytesIO
+import xml.etree.ElementTree as ET
+from bs4 import BeautifulSoup
 import pdfkit
+from models.publication import Publication
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Constants
+BUNDESBANK_BASE_URL = 'https://www.bundesbank.de'
+DATE_FORMAT_RSS = '%a, %d %b %Y %H:%M:%S %Z'
+DATE_FORMAT_WEB = '%d.%m.%Y'
+
+class ParserException(Exception):
+    """Custom exception for parser-related errors."""
+    pass
 
 def fix_url(url: str) -> str:
     """
-    Fix the URL if it is not absolute.
-    """
-    if url.startswith('http'):
-        return url
-    return f'https://www.bundesbank.de{url}'
-
-
-def parse_rss_articles(content: str) -> list[Publication]:
-    """
-    Parse the RSS articles from the text.
-    """
-    root = ET.fromstring(content)
-    publications = []
+    Ensure URL is absolute by adding base URL if necessary.
     
-    def extract_text(element):
-        if element is not None:
-            return element.text
-        return None
-    
-    items = root.findall('.//item')
-    
-    for item in items:
-        title = extract_text(item.find('title'))
-        link = extract_text(item.find('link'))
-        #description = extract_text(item.find('description'))
-        published_at = extract_text(item.find('pubDate'))
-        related_urls = [item.find("enclosure").get("url")] if item.find("enclosure") != None else []
-        # Mon, 20 Jan 2025 10:30:00 GMT parse as datetime
-        published_at_datetime = datetime.strptime(published_at, '%a, %d %b %Y %H:%M:%S %Z')
+    Args:
+        url (str): The URL to fix
         
-        publications.append(Publication(web_title=title, web_url=link, published_at=published_at_datetime, related_urls=related_urls))
-        
-    return publications
-
-def parse_web_articles(content) -> list[Publication]:
+    Returns:
+        str: The absolute URL
     """
-    Parse the web articles from the text.
-    """
+    return url if url.startswith('http') else f'{BUNDESBANK_BASE_URL}{url}'
 
-    soup = BeautifulSoup(content, 'lxml')
-    publications = []
+def parse_rss_articles(content: str) -> List[Publication]:
+    """
+    Parse RSS feed content and extract articles.
     
-    # Find all articles in the collection items
-    articles = soup.select('#main-content .collection__items .teasable')
-    
-    for article in articles:
-        # Extract link and title
-        link_elem = article.select_one('.teasable__link')
-        if not link_elem:
-            continue
-            
-        link = fix_url(link_elem.get('href'))
-        title_elem = article.select_one('.teasable__title--marked')
-        web_title = title_elem.get_text(strip=True) if title_elem else None
+    Args:
+        content (str): Raw RSS XML content
         
-        # Extract description and parse date
-        description = article.select_one('.teasable__text p')
-        if description:
-            description_text = description.get_text(strip=True)
+    Returns:
+        List[Publication]: List of parsed Publication objects
+        
+    Raises:
+        ParserException: If RSS parsing fails
+    """
+    try:
+        root = ET.fromstring(content)
+        publications = []
+        
+        for item in root.findall('.//item'):
             try:
-                date_str = description_text.split(':')[0].strip()
-                published_at = datetime.strptime(date_str, '%d.%m.%Y')
-            except (ValueError, IndexError):
-                published_at = None
-        else:
-            published_at = None
-            
-        # Get related URLs
-        related_urls = [fix_url(link)] if link else []
+                title = item.find('title').text
+                link = item.find('link').text
+                published_at = item.find('pubDate').text
+                
+                # Get enclosure URL if available
+                enclosure = item.find("enclosure")
+                related_urls = [enclosure.get("url")] if enclosure is not None else []
+                
+                published_at_datetime = datetime.strptime(published_at, DATE_FORMAT_RSS)
+                
+                publications.append(Publication(
+                    web_title=title,
+                    web_url=link,
+                    published_at=published_at_datetime,
+                    related_urls=related_urls
+                ))
+                
+            except (AttributeError, ValueError) as e:
+                logger.warning(f"Failed to parse RSS item: {str(e)}")
+                continue
+                
+        return publications
         
-        if web_title and link:
-            publications.append(Publication(
-                web_title=web_title,
-                web_url=link,
-                published_at=published_at,
-                related_urls=related_urls
-            ))
+    except ET.ParseError as e:
+        raise ParserException(f"Failed to parse RSS content: {str(e)}")
+
+def parse_web_articles(content: str) -> List[Publication]:
+    """
+    Parse web page content and extract articles.
     
-    return publications
+    Args:
+        content (str): Raw HTML content
+        
+    Returns:
+        List[Publication]: List of parsed Publication objects
+        
+    Raises:
+        ParserException: If HTML parsing fails
+    """
+    try:
+        soup = BeautifulSoup(content, 'lxml')
+        publications = []
+        
+        articles = soup.select('#main-content .collection__items .teasable')
+        
+        for article in articles:
+            try:
+                # Extract required elements
+                link_elem = article.select_one('.teasable__link')
+                if not link_elem:
+                    continue
+                    
+                link = fix_url(link_elem.get('href'))
+                title_elem = article.select_one('.teasable__title--marked')
+                web_title = title_elem.get_text(strip=True) if title_elem else None
+                
+                # Parse publication date
+                published_at = None
+                description = article.select_one('.teasable__text p')
+                if description:
+                    description_text = description.get_text(strip=True)
+                    try:
+                        date_str = description_text.split(':')[0].strip()
+                        published_at = datetime.strptime(date_str, DATE_FORMAT_WEB)
+                    except (ValueError, IndexError):
+                        logger.warning(f"Failed to parse date from: {description_text}")
+                
+                if web_title and link:
+                    publications.append(Publication(
+                        web_title=web_title,
+                        web_url=link,
+                        published_at=published_at,
+                        related_urls=[link]
+                    ))
+                    
+            except Exception as e:
+                logger.warning(f"Failed to parse article: {str(e)}")
+                continue
+                
+        return publications
+        
+    except Exception as e:
+        raise ParserException(f"Failed to parse web content: {str(e)}")
 
 def convert_article_to_pdf(content: str) -> BytesIO:
     """
-    Convert HTML content to PDF, extracting only the main content.
-    Returns a BytesIO object containing the PDF.
+    Convert article HTML content to PDF format.
+    
+    Args:
+        content (str): HTML content to convert
+        
+    Returns:
+        BytesIO: PDF content as bytes buffer
+        
+    Raises:
+        ParserException: If PDF conversion fails
     """
-    
-    # Parse the HTML and extract main content
-    soup = BeautifulSoup(content, 'lxml')
-    main_content = soup.select_one('.main')
-    
-    if not main_content:
-        raise ValueError("Could not find main content in HTML")
-    
-    # Configure pdfkit options
-    options = {
-        'quiet': True,
-        'encoding': 'UTF-8'
-    }
-    
-    # Convert to PDF
-    pdf = pdfkit.from_string(str(main_content), False, options=options)
-    
-    # Create BytesIO object and write PDF to it
-    pdf_buffer = BytesIO(pdf)
-    return pdf_buffer
+    try:
+        soup = BeautifulSoup(content, 'lxml')
+        main_content = soup.select_one('.main')
+        
+        if not main_content:
+            raise ParserException("Main content section not found in HTML")
+        
+        options = {
+            'quiet': True,
+            'encoding': 'UTF-8',
+            'enable-local-file-access': True
+        }
+        
+        pdf = pdfkit.from_string(str(main_content), False, options=options)
+        return BytesIO(pdf)
+        
+    except Exception as e:
+        raise ParserException(f"PDF conversion failed: {str(e)}")
