@@ -9,7 +9,7 @@ class ScrapingFramework:
         self.debug = debug
         self.logger = utilities.logger.ConsoleLogger(id, self.debug)
         self.client = utilities.networking.Client(self.logger)
-        self.client.init()
+        self.client.set_timeout(60).init()
 
     def retry_wait(self, seconds: int = 2) -> None:
         time.sleep(seconds)
