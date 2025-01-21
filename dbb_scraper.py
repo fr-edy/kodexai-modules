@@ -29,6 +29,12 @@ class ParserException(Exception):
     pass
 
 
+# Utils
+def is_pdf(url: str) -> bool:
+    parsed_url = urllib.parse.urlparse(url)
+    return parsed_url.path.lower().endswith(".pdf")
+
+
 # Base scraping class
 class BaseScraper:
     def __init__(self, id: str, debug: bool = False) -> None:
@@ -108,12 +114,18 @@ class BaseScraper:
     def get_page(self, url: str) -> requests.Response:
         return self._request(url, "GET", "GET")
 
+    def get_page_as_tree(self, url: str) -> requests.Response:
+        page = self.get_page(url)
+        parser = etree.HTMLParser()
+        tree = etree.parse(BytesIO(page.text.encode("utf-8")), parser)
+        return tree
+
     def get_rss_feed(self, url: str) -> feedparser.FeedParserDict:
         resp = self._request(url, "GET", "RSS")
         return feedparser.parse(resp.text)
 
     def download_file(self, url: str) -> BytesIO:
-        config = "PDF" if url.endswith(".pdf") else "GET"
+        config = "PDF" if is_pdf(url) else "GET"
         resp = self._request(url, "GET", config)
         return resp.content
 
@@ -219,7 +231,7 @@ class BundesbankScraper(BaseScraper):
         except Exception as e:
             self.logger.warning(f"Failed to parse article: {str(e)}")
 
-    def parse_web_articles(self, content: str) -> List[Publication]:
+    def parse_web_articles(self, tree: etree._ElementTree) -> List[Publication]:
         """
         Parse web page content and extract articles.
 
@@ -233,11 +245,10 @@ class BundesbankScraper(BaseScraper):
             ParserException: If HTML parsing fails
         """
         try:
-            parser = etree.HTMLParser()
-            tree = etree.parse(BytesIO(content.encode("utf-8")), parser)
-            publications = []
 
-            article_list = tree.xpath(
+            publications: List[Publication] = []
+
+            article_list: etree._ElementTree = tree.xpath(
                 '//*[@id="main-content"]/div/div/main/div[2]/div/div/nav/ul'
             )[0]
             articles = article_list.xpath(
@@ -246,6 +257,8 @@ class BundesbankScraper(BaseScraper):
 
             for article in articles:
                 if pub := self._parse_article(article):
+                    if not is_pdf(pub.web_url):
+                        pub.related_urls = self.get_article_related_urls(pub.web_url)
                     publications.append(pub)
 
             return publications
@@ -253,13 +266,32 @@ class BundesbankScraper(BaseScraper):
         except Exception as e:
             raise ParserException(f"Failed to parse web content: {str(e)}")
 
+    def parse_related_urls(self, tree: etree._ElementTree) -> List[str]:
+        files_list: List[etree._ElementTree] = tree.xpath(
+            '//*[@id="main-content"]/div/div/main/nav/ul/li'
+        )
+        file_urls: List[str] = []
+
+        for file in files_list:
+            link_elem = file.xpath(".//a")
+            file_urls.append(link_elem[0].get("href"))
+
+        return files_list
+
     def load_rss_link(self, url: str) -> List[Publication]:
+        self.logger.info(f"Getting rss feed from {url}")
         rss_feed = self.get_rss_feed(url)
         return self.parse_rss_articles(rss_feed)
 
     def load_web_link(self, url: str) -> List[Publication]:
-        data = self.get_page(url)
-        return self.parse_web_articles(data.text)
+        self.logger.info(f"Getting articles on for {url}")
+        tree = self.get_page_as_tree(url)
+        return self.parse_web_articles(tree)
+
+    def get_article_related_urls(self, article_url: str) -> List[str]:
+        self.logger.info(f"Getting related urls for {article_url}")
+        tree = self.get_page_as_tree(article_url)
+        return self.parse_related_urls(tree)
 
 
 # Example usage
@@ -269,16 +301,16 @@ if __name__ == "__main__":
     rss_pubs = s.load_rss_link(f"{BUNDESBANK_BASE_URL}/service/rss/de/633286/feed.rss")
     print("rss_pubs:")
     for pub in rss_pubs:
-        print(f" - {pub}")
+        print(f" - {pub.web_title}")
 
     web_pubs = s.load_web_link(f"{BUNDESBANK_BASE_URL}/de/presse/stellungnahmen")
     print("\n\nweb_pubs:")
     for pub in web_pubs:
-        print(f" - {pub}")
+        print(f" - {pub.published_at} ({len(pub.related_urls)} related)")
 
     pdf_bytes = s.download_file(
         f"{BUNDESBANK_BASE_URL}/resource/blob/696204/ffdf2c3e5dc30961892a835482998453/472B63F073F071307366337C94F8C870/2016-01-11-ogaw-download.pdf"
     )
     with open("sample_pdf.pdf", "wb") as f:
         f.write(pdf_bytes)
-    print("\n\nDownloaded PDF, saved to sample_pdf.pdf")
+    # print("\n\nDownloaded PDF, saved to sample_pdf.pdf")
