@@ -2,7 +2,6 @@ import base
 from modules.bundesbank.parser import parse_rss_articles, parse_web_articles
 from models.publication import Publication
 from io import BytesIO
-import logging
 
 class BundesbankScraper(base.ScrapingFramework):
     """
@@ -17,8 +16,6 @@ class BundesbankScraper(base.ScrapingFramework):
         """
         super().__init__("BundesbankScraper", False)
         # Replace print-based logger with proper logging
-        logging.basicConfig(level=logging.INFO)
-        self.logger = logging.getLogger(__name__)
         self.logger.info("Initialized BundesbankScraper")
         self.base = "https://www.bundesbank.de"
         

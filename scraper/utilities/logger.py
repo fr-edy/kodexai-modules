@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Any, Callable, Protocol
 from dataclasses import dataclass
+import logging
 
 class Logger(Protocol):
     def success(self, format_str: str, *args: Any) -> None:
@@ -66,24 +67,31 @@ class ConsoleLogger:
     def __init__(self, prefix: str, is_debug: bool) -> None:
         self.prefix = prefix
         self.is_debug = is_debug
-
-    def _log(self, level: str, format_str: str, *args: Any) -> None:
-        color = COLORS[level]
-        message = format_str % args if args else format_str
-        print(f"[{get_time()}] {color}[{self.prefix}]{COLORS['reset']} {message}")
+        self.logger = logging.getLogger(prefix)
+        if not self.logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter('%(asctime)s [%(name)s] %(message)s', 
+                                       datefmt='%H:%M:%S.%f')
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+        self.logger.setLevel(logging.DEBUG if is_debug else logging.INFO)
 
     def debug(self, format_str: str, *args: Any) -> None:
         if self.is_debug:
-            self._log("debug", format_str, *args)
+            message = format_str % args if args else format_str
+            self.logger.debug(message)
 
     def error(self, format_str: str, *args: Any) -> None:
-        self._log("error", format_str, *args)
+        message = format_str % args if args else format_str
+        self.logger.error(message)
 
     def info(self, format_str: str, *args: Any) -> None:
-        self._log("info", format_str, *args)
+        message = format_str % args if args else format_str
+        self.logger.info(message)
 
     def success(self, format_str: str, *args: Any) -> None:
-        self._log("success", format_str, *args)
+        message = format_str % args if args else format_str
+        self.logger.info(f"✓ {message}")
 
 def new_console_logger(prefix: str, debug: bool) -> Logger:
     """Creates a new ConsoleLogger instance."""
