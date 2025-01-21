@@ -52,13 +52,13 @@ class Client:
         self._client.timeout = self._timeout
         return self
 
-    def get(self, url: str) -> "Response":
+    def get(self, url: str, headers:Optional[dict] = None) -> "Response":
         """
         Perform a GET request to the specified URL.
         """
         try:
             self._logger.debug(f"GET {url}")
-            response = self._client.get(url)
+            response = self._client.get(url, headers=headers if headers else self._headers)
             return Response(response)
         except Exception as e:
             self._logger.debug(f"Failed to GET {url}: {e}")
