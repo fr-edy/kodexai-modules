@@ -12,8 +12,9 @@ import feedparser
 # Constants
 DATE_FORMAT_RSS = "%a, %d %b %Y %H:%M:%S %Z"
 DATE_FORMAT_WEB = "%d.%m.%Y"
-# DEBUG = True
+DEBUG = True
 TIMEOUT_AFTER_SECONDS = 15
+RETRY_LIMIT = 5
 BUNDESBANK_BASE_URL = "https://www.bundesbank.de"
 CHROME_DATA = {
     "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
@@ -25,6 +26,12 @@ CHROME_DATA = {
 # Errors
 class ParserException(Exception):
     """Custom exception for parser-related errors."""
+
+    pass
+
+
+class TooManyRetries(Exception):
+    """Custom exception for network-related errors."""
 
     pass
 
@@ -98,23 +105,35 @@ class BaseScraper:
     def _request(
         self, url: str, method: str, config: str, expected: int = 200, retries: int = 0
     ) -> requests.Response:
-        resp = self.session.request(
-            method,
-            url,
-            headers=self.header_config[config],
-            timeout=TIMEOUT_AFTER_SECONDS,
-        )
+        try:
+            if retries > RETRY_LIMIT:
+                raise TooManyRetries()
 
-        if resp.status_code != expected:
+            resp = self.session.request(
+                method,
+                url,
+                headers=self.header_config[config],
+                timeout=TIMEOUT_AFTER_SECONDS,
+            )
+
+            if resp.status_code != expected:
+                self.retry_wait()
+                return self._request(
+                    url, method, config, expected=expected, retries=retries + 1
+                )
+
+            return resp
+        except requests.RequestException as e:
+            self.logger.error(f"Request failed: {e}")
             self.retry_wait()
-            return self._request(url, config, expected=expected, retries=retries + 1)
-
-        return resp
+            return self._request(
+                url, method, config, expected=expected, retries=retries + 1
+            )
 
     def get_page(self, url: str) -> requests.Response:
         return self._request(url, "GET", "GET")
 
-    def get_page_as_tree(self, url: str) -> requests.Response:
+    def get_page_as_tree(self, url: str) -> etree._ElementTree:
         page = self.get_page(url)
         parser = etree.HTMLParser()
         tree = etree.parse(BytesIO(page.text.encode("utf-8")), parser)
@@ -124,7 +143,7 @@ class BaseScraper:
         resp = self._request(url, "GET", "RSS")
         return feedparser.parse(resp.text)
 
-    def download_file(self, url: str) -> BytesIO:
+    def download_file(self, url: str) -> bytes:
         config = "PDF" if is_pdf(url) else "GET"
         resp = self._request(url, "GET", config)
         return resp.content
@@ -148,7 +167,7 @@ class BundesbankScraper(BaseScraper):
         Parse RSS feed content and extract articles.
 
         Args:
-            content (str): Raw RSS XML content
+            feed (feedparser.FeedParserDict): Parsed RSS feed
 
         Returns:
             List[Publication]: List of parsed Publication objects
@@ -230,13 +249,14 @@ class BundesbankScraper(BaseScraper):
 
         except Exception as e:
             self.logger.warning(f"Failed to parse article: {str(e)}")
+            return None
 
     def parse_web_articles(self, tree: etree._ElementTree) -> List[Publication]:
         """
         Parse web page content and extract articles.
 
         Args:
-            content (str): Raw HTML content
+            tree (etree._ElementTree): Parsed HTML tree
 
         Returns:
             List[Publication]: List of parsed Publication objects
@@ -245,7 +265,6 @@ class BundesbankScraper(BaseScraper):
             ParserException: If HTML parsing fails
         """
         try:
-
             publications: List[Publication] = []
 
             article_list: etree._ElementTree = tree.xpath(
@@ -276,7 +295,7 @@ class BundesbankScraper(BaseScraper):
             link_elem = file.xpath(".//a")
             file_urls.append(link_elem[0].get("href"))
 
-        return files_list
+        return file_urls
 
     def load_rss_link(self, url: str) -> List[Publication]:
         self.logger.info(f"Getting rss feed from {url}")
