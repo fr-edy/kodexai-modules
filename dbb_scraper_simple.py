@@ -17,21 +17,12 @@ TIMEOUT_SECONDS = 15
 RETRY_LIMIT = 5
 BASE_URL = "https://www.bundesbank.de"
 
-# Browser headers
+# Browser headers to bypass simple bot detection
 HEADERS = {
-    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-    "accept-language": "de-DE,de;q=0.9,en;q=0.8,en-US;q=0.7",
-    "cache-control": "no-cache",
-    "pragma": "no-cache",
-    "priority": "u=0, i",
-    "sec-fetch-dest": "document",
-    "sec-fetch-mode": "navigate",
-    "sec-fetch-site": "none",
-    "sec-fetch-user": "?1",
-    "upgrade-insecure-requests": "1",
-    "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-    "sec-ch-ua-platform": '"macOS"',
+    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "accept-language": "de-DE,de;q=0.9,en;q=0.8",
     "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
 }
 
 
@@ -174,12 +165,28 @@ def load_web_link(web_url: str, logger: Optional[logging.Logger] = None) -> list
                     try:
                         article_resp = make_request(link, session)
                         article_tree = etree.parse(BytesIO(article_resp.content), parser)
-                        file_links = article_tree.xpath('//*[@id="main-content"]//nav//ul//li//a')
-                        related_urls = [
-                            urllib.parse.urljoin(BASE_URL, a.get('href'))
-                            for a in file_links
-                            if a.get('href')
-                        ]
+                        # Get related URLs using the same approach as original
+                        files_list = article_tree.xpath('//*[@id="main-content"]/div/div/main/nav/ul/li')
+                        related_urls = []
+                        
+                        for file in files_list:
+                            try:
+                                link_elem = file.xpath(".//a")
+                                if not link_elem:
+                                    continue
+                                    
+                                url = link_elem[0].get("href")
+                                if not url:
+                                    continue
+
+                                # Handle relative URLs
+                                if not url.startswith(('http://', 'https://')):
+                                    url = urllib.parse.urljoin(BASE_URL, url)
+                                
+                                related_urls.append(url)
+                            except Exception as e:
+                                logger.warning(f"Failed to parse related URL: {str(e)}")
+                                continue
                     except Exception as e:
                         logger.warning(f"Failed to get related URLs for {link}: {str(e)}")
                 
@@ -219,7 +226,7 @@ def download_file(file_url: str, logger: Optional[logging.Logger] = None) -> Byt
 
 
 if __name__ == "__main__":
-    logger = setup_logger(debug=True)
+    logger = setup_logger(debug=False)
     
     try:
         # Test RSS feed scraping
@@ -235,7 +242,12 @@ if __name__ == "__main__":
             logger
         )
         print(f"\nFound {len(web_pubs)} web publications")
-        
+        print("\nWeb Publications:")
+        print("-" * 140)
+        print(f"{'Title':<60} {'Date':<20} {'Related URLs':<15} {'URL':<37}")
+        print("-" * 140)
+        for pub in web_pubs: print(f"{pub.web_title[:57]+'...':<60} {pub.published_at.strftime('%Y-%m-%d'):<20} {len(pub.related_urls):<15} {pub.web_url[:40]+'...':<40}")
+
         # Test file download
         pdf_buffer = download_file(
             "https://www.bundesbank.de/resource/blob/696204/ffdf2c3e5dc30961892a835482998453/472B63F073F071307366337C94F8C870/2016-01-11-ogaw-download.pdf",
