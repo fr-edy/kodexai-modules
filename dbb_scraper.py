@@ -9,10 +9,12 @@ from typing import Optional
 import feedparser
 import requests
 from lxml import etree
+import re
 
 # Constants
 DATE_FORMAT_RSS = "%a, %d %b %Y %H:%M:%S %Z"
-DATE_FORMAT_WEB = "%d.%m.%Y"
+DATE_FORMAT_WEB_DESC = "%d.%m.%Y"
+DATE_FORMAT_WEB_URL = "%Y-%m-%d"
 TIMEOUT_AFTER_SECONDS = 15
 RETRY_LIMIT = 5
 BUNDESBANK_BASE_URL = "https://www.bundesbank.de"
@@ -414,15 +416,26 @@ class BundesbankScraper(BaseScraper):
 
             # Parse and validate publication date
             description = article.xpath(".//div[contains(@class, 'teasable__text')]//p")
-            if not description:
-                raise ParserException("Description element not found")
 
-            description_text = description[0].text.strip()
-            try:
-                date_str = description_text.split(":")[0].strip()
-                published_at = datetime.strptime(date_str, DATE_FORMAT_WEB)
-            except (ValueError, IndexError) as e:
-                raise ParserException(f"Failed to parse date: {str(e)}")
+            # TODO: how should the parser handle articles without descriptions?
+            description_text = (
+                description[0].text.strip() if len(description) > 0 else web_title
+            )
+
+            match = re.search(r"/(\d{4}-\d{2}-\d{2})-", link)
+            if match:
+                date_str = match.group(1)
+                published_at = datetime.strptime(date_str, DATE_FORMAT_WEB_URL)
+            elif len(description) > 0:
+                try:
+                    date_str = description_text.split(":")[0].strip()
+                    published_at = datetime.strptime(date_str, DATE_FORMAT_WEB_DESC)
+                except (ValueError, IndexError) as e:
+                    raise ParserException(f"Failed to parse date: {str(e)}")
+            else:
+                raise ParserException("Failed to parse date")
+
+            # if there is no description, try to parse date out of URL
 
             # Create and validate publication
             return Publication(
