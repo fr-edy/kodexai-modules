@@ -100,18 +100,50 @@ class BaseScraper:
         }
 
     def _initialize_logger(self, id: str, debug: bool) -> logging.Logger:
-        logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
+        """Initialize logger with appropriate logging level.
+        
+        Args:
+            id (str): Logger identifier
+            debug (bool): Whether to enable debug logging
+            
+        Returns:
+            logging.Logger: Configured logger instance
+        """
+        logging.basicConfig(
+            level=logging.DEBUG if debug else logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
         return logging.getLogger(id)
 
     def retry_wait(self, seconds: int = 2) -> None:
+        """Wait between retry attempts.
+        
+        Args:
+            seconds (int): Number of seconds to wait. Defaults to 2.
+        """
         time.sleep(seconds)
 
     def _request(
         self, url: str, method: str, config: str, expected: int = 200, retries: int = 0
     ) -> requests.Response:
+        """Make HTTP request with retry logic.
+        
+        Args:
+            url (str): Target URL
+            method (str): HTTP method
+            config (str): Header configuration key
+            expected (int): Expected HTTP status code. Defaults to 200.
+            retries (int): Current retry attempt count. Defaults to 0.
+            
+        Returns:
+            requests.Response: Response object
+            
+        Raises:
+            TooManyRetries: When retry limit is exceeded
+        """
         try:
             if retries > RETRY_LIMIT:
-                raise TooManyRetries()
+                raise TooManyRetries(f"Failed to get {url} after {RETRY_LIMIT} attempts")
 
             resp = self.session.request(
                 method,
@@ -121,6 +153,7 @@ class BaseScraper:
             )
 
             if resp.status_code != expected:
+                self.logger.warning(f"Unexpected status code {resp.status_code} for {url}")
                 self.retry_wait()
                 return self._request(
                     url, method, config, expected=expected, retries=retries + 1
@@ -128,38 +161,69 @@ class BaseScraper:
 
             return resp
         except requests.RequestException as e:
-            self.logger.error(f"Request failed: {e}")
+            self.logger.error(f"Request failed: {str(e)}")
             self.retry_wait()
             return self._request(
                 url, method, config, expected=expected, retries=retries + 1
             )
 
     def get_page(self, url: str) -> requests.Response:
+        """Get webpage content.
+        
+        Args:
+            url (str): Target URL
+            
+        Returns:
+            requests.Response: Response object
+        """
         return self._request(url, "GET", "GET")
 
     def get_page_as_tree(self, url: str) -> etree._ElementTree:
+        """Get webpage content as parsed HTML tree.
+        
+        Args:
+            url (str): Target URL
+            
+        Returns:
+            etree._ElementTree: Parsed HTML tree
+        """
         page = self.get_page(url)
         parser = etree.HTMLParser()
         tree = etree.parse(BytesIO(page.text.encode("utf-8")), parser)
         return tree
 
     def get_rss_feed(self, url: str) -> feedparser.FeedParserDict:
+        """Get and parse RSS feed content.
+        
+        Args:
+            url (str): RSS feed URL
+            
+        Returns:
+            feedparser.FeedParserDict: Parsed RSS feed
+        """
         resp = self._request(url, "GET", "RSS")
         return feedparser.parse(resp.text)
 
     def download_file(self, url: str) -> bytes:
+        """Download file content.
+        
+        Args:
+            url (str): File URL
+            
+        Returns:
+            bytes: File content
+        """
         config = "PDF" if is_pdf(url) else "GET"
         resp = self._request(url, "GET", config)
         return resp.content
-
-
+    
+    
 @dataclass
 class Publication:
     web_title: str
     published_at: datetime
     web_url: str
     related_urls: list[str] = field(default_factory=list)
-
 
 class BundesbankScraper(BaseScraper):
     def __init__(self, debug: bool = False) -> None:
@@ -274,6 +338,7 @@ class BundesbankScraper(BaseScraper):
             article_list: etree._ElementTree = tree.xpath(
                 '//*[@id="main-content"]/div/div/main/div[2]/div/div/nav/ul'
             )[0]
+            
             articles = article_list.xpath(
                 ".//div[contains(@class, 'collection__item')]"
             )
