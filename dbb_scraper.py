@@ -571,8 +571,6 @@ if __name__ == "__main__":
     try:
         web_pubs = s.load_web_link(f"{BUNDESBANK_BASE_URL}/de/presse/stellungnahmen")
         print(f"Successfully parsed {len(web_pubs)} web publications")
-        for p in web_pubs:
-            print(f" - {p.web_title}, related={len(p.related_urls)}")
     except ParserException as e:
         print(f"Failed to parse web feed: {str(e)}")
         if e.details:
