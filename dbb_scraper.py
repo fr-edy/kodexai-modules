@@ -1,13 +1,13 @@
 from dataclasses import field, dataclass
-from typing import List, Optional
-import urllib.parse
 from datetime import datetime
-import requests
-from lxml import etree
 from io import BytesIO
 import logging
 import time
+import urllib.parse
+
 import feedparser
+import requests
+from lxml import etree
 
 # Constants
 DATE_FORMAT_RSS = "%a, %d %b %Y %H:%M:%S %Z"
@@ -47,8 +47,11 @@ class BaseScraper:
     def __init__(self, id: str, debug: bool = False) -> None:
         self.debug = debug
         self.session = requests.Session()
+        self.header_config = self._initialize_headers()
+        self.logger = self._initialize_logger(id, debug)
 
-        self.header_config = {
+    def _initialize_headers(self) -> dict[str, dict[str, str]]:
+        return {
             "GET": {
                 "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
                 "accept-language": "de-DE,de;q=0.9,en;q=0.8,en-US;q=0.7",
@@ -96,8 +99,9 @@ class BaseScraper:
             },
         }
 
+    def _initialize_logger(self, id: str, debug: bool) -> logging.Logger:
         logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
-        self.logger = logging.getLogger(id)
+        return logging.getLogger(id)
 
     def retry_wait(self, seconds: int = 2) -> None:
         time.sleep(seconds)
@@ -154,15 +158,15 @@ class Publication:
     web_title: str
     published_at: datetime
     web_url: str
-    related_urls: List[str] = field(default_factory=list)
+    related_urls: list[str] = field(default_factory=list)
 
 
 class BundesbankScraper(BaseScraper):
-    def __init__(self, debug=False):
+    def __init__(self, debug: bool = False) -> None:
         super().__init__("dbb_scraper", debug=debug)
         self.base = BUNDESBANK_BASE_URL
 
-    def parse_rss_articles(self, feed: feedparser.FeedParserDict) -> List[Publication]:
+    def parse_rss_articles(self, feed: feedparser.FeedParserDict) -> list[Publication]:
         """
         Parse RSS feed content and extract articles.
 
@@ -170,7 +174,7 @@ class BundesbankScraper(BaseScraper):
             feed (feedparser.FeedParserDict): Parsed RSS feed
 
         Returns:
-            List[Publication]: List of parsed Publication objects
+            list[Publication]: List of parsed Publication objects
 
         Raises:
             ParserException: If RSS parsing fails
@@ -213,7 +217,7 @@ class BundesbankScraper(BaseScraper):
         except Exception as e:
             raise ParserException(f"Failed to parse RSS content: {str(e)}")
 
-    def _parse_article(self, article) -> Optional[Publication]:
+    def _parse_article(self, article: etree._Element) -> Publication | None:
         try:
             # Extract required elements
             link_elem = article.xpath(".//a[contains(@class, 'teasable__link')]")
@@ -251,7 +255,7 @@ class BundesbankScraper(BaseScraper):
             self.logger.warning(f"Failed to parse article: {str(e)}")
             return None
 
-    def parse_web_articles(self, tree: etree._ElementTree) -> List[Publication]:
+    def parse_web_articles(self, tree: etree._ElementTree) -> list[Publication]:
         """
         Parse web page content and extract articles.
 
@@ -259,13 +263,13 @@ class BundesbankScraper(BaseScraper):
             tree (etree._ElementTree): Parsed HTML tree
 
         Returns:
-            List[Publication]: List of parsed Publication objects
+            list[Publication]: List of parsed Publication objects
 
         Raises:
             ParserException: If HTML parsing fails
         """
         try:
-            publications: List[Publication] = []
+            publications: list[Publication] = []
 
             article_list: etree._ElementTree = tree.xpath(
                 '//*[@id="main-content"]/div/div/main/div[2]/div/div/nav/ul'
@@ -285,11 +289,11 @@ class BundesbankScraper(BaseScraper):
         except Exception as e:
             raise ParserException(f"Failed to parse web content: {str(e)}")
 
-    def parse_related_urls(self, tree: etree._ElementTree) -> List[str]:
-        files_list: List[etree._ElementTree] = tree.xpath(
+    def parse_related_urls(self, tree: etree._ElementTree) -> list[str]:
+        files_list: list[etree._ElementTree] = tree.xpath(
             '//*[@id="main-content"]/div/div/main/nav/ul/li'
         )
-        file_urls: List[str] = []
+        file_urls: list[str] = []
 
         for file in files_list:
             link_elem = file.xpath(".//a")
@@ -297,17 +301,17 @@ class BundesbankScraper(BaseScraper):
 
         return file_urls
 
-    def load_rss_link(self, url: str) -> List[Publication]:
+    def load_rss_link(self, url: str) -> list[Publication]:
         self.logger.info(f"Getting rss feed from {url}")
         rss_feed = self.get_rss_feed(url)
         return self.parse_rss_articles(rss_feed)
 
-    def load_web_link(self, url: str) -> List[Publication]:
+    def load_web_link(self, url: str) -> list[Publication]:
         self.logger.info(f"Getting articles on for {url}")
         tree = self.get_page_as_tree(url)
         return self.parse_web_articles(tree)
 
-    def get_article_related_urls(self, article_url: str) -> List[str]:
+    def get_article_related_urls(self, article_url: str) -> list[str]:
         self.logger.info(f"Getting related urls for {article_url}")
         tree = self.get_page_as_tree(article_url)
         return self.parse_related_urls(tree)
