@@ -13,7 +13,6 @@ from lxml import etree
 # Constants
 DATE_FORMAT_RSS = "%a, %d %b %Y %H:%M:%S %Z"
 DATE_FORMAT_WEB = "%d.%m.%Y"
-DEBUG = True
 TIMEOUT_AFTER_SECONDS = 15
 RETRY_LIMIT = 5
 BUNDESBANK_BASE_URL = "https://www.bundesbank.de"
@@ -493,6 +492,7 @@ class BundesbankScraper(BaseScraper):
         except Exception as e:
             self.logger.error(f"Failed to parse related URLs: {str(e)}")
             return []
+        
     def load_rss_link(self, url: str) -> list[Publication]:
         self.logger.info(f"Getting rss feed from {url}")
         rss_feed = self.get_rss_feed(url)
