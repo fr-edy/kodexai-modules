@@ -524,6 +524,8 @@ if __name__ == "__main__":
     except ValidationError as e:
         print(f"Validation error: {str(e)}")
         print(f"Field: {e.field}, Value: {e.value}")
+    except TooManyRetries as e:
+        print(f"Retry limit exceeded: {str(e)}")
         
     try:
         web_pubs = s.load_web_link(f"{BUNDESBANK_BASE_URL}/de/presse/stellungnahmen")
@@ -535,11 +537,18 @@ if __name__ == "__main__":
     except ValidationError as e:
         print(f"Validation error: {str(e)}")
         print(f"Field: {e.field}, Value: {e.value}")
+    except TooManyRetries as e:
+        print(f"Retry limit exceeded: {str(e)}")
 
-        
-    pdf_bytes = s.download_file(
-        f"{BUNDESBANK_BASE_URL}/resource/blob/696204/ffdf2c3e5dc30961892a835482998453/472B63F073F071307366337C94F8C870/2016-01-11-ogaw-download.pdf"
-    )
-    with open("sample_pdf.pdf", "wb") as f:
-        f.write(pdf_bytes)
+        try:
+            pdf_bytes = s.download_file(
+                f"{BUNDESBANK_BASE_URL}/resource/blob/696204/ffdf2c3e5dc30961892a835482998453/472B63F073F071307366337C94F8C870/2016-01-11-ogaw-download.pdf"
+            )
+            with open("sample_pdf.pdf", "wb") as f:
+                f.write(pdf_bytes)
+            print("\n\nDownloaded PDF, saved to sample_pdf.pdf")
+        except TooManyRetries as e:
+            print(f"Failed to download PDF: {str(e)}")
+        except IOError as e:
+            print(f"Failed to save PDF: {str(e)}")
     # print("\n\nDownloaded PDF, saved to sample_pdf.pdf")
