@@ -21,26 +21,34 @@ CHROME_DATA = {
     "sec-ch-ua-platform": '"macOS"',
     "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
 }
+
 MAX_TITLE_LENGTH = 500  # Maximum reasonable title length
-MIN_TITLE_LENGTH = 3    # Minimum reasonable title length
-MAX_RELATED_URLS = 50   # Maximum reasonable number of related URLs
-FUTURE_TOLERANCE = timedelta(days=1)  # Allow dates up to 1 day in the future
-PAST_TOLERANCE = timedelta(days=(datetime.now() - datetime(2000, 1, 1)).days)  # Reasonable past date limit (since 2000)
+MIN_TITLE_LENGTH = 3  # Minimum reasonable title length
+MAX_RELATED_URLS = 50  # Maximum reasonable number of related URLs
+FUTURE_TOLERANCE = timedelta(days=5)  # Allow dates up to 5 day in the future
+PAST_TOLERANCE = timedelta(
+    days=(datetime.now() - datetime(1975, 1, 1)).days
+)  # Reasonable past date limit (since 1975)
 
 
 # Errors
 class ParserException(Exception):
     """Custom exception for parser-related errors."""
+
     def __init__(self, message: str, details: Optional[dict] = None):
         super().__init__(message)
         self.details = details or {}
 
+
 class TooManyRetries(Exception):
     """Custom exception for network-related errors."""
+
     pass
+
 
 class ValidationError(Exception):
     """Custom exception for data validation errors."""
+
     def __init__(self, message: str, field: str, value: any):
         super().__init__(f"{message} - Field: {field}, Value: {value}")
         self.field = field
@@ -62,73 +70,45 @@ class BaseScraper:
         self.logger = self._initialize_logger(id, debug)
 
     def _initialize_headers(self) -> dict[str, dict[str, str]]:
-        return {
-            "GET": {
-                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-                "accept-language": "de-DE,de;q=0.9,en;q=0.8,en-US;q=0.7",
-                "cache-control": "no-cache",
-                "pragma": "no-cache",
-                "priority": "u=0, i",
-                "sec-fetch-dest": "document",
-                "sec-fetch-mode": "navigate",
-                "sec-fetch-site": "none",
-                "sec-fetch-user": "?1",
-                "upgrade-insecure-requests": "1",
-                "sec-ch-ua": CHROME_DATA["sec-ch-ua"],
-                "sec-ch-ua-platform": CHROME_DATA["sec-ch-ua-platform"],
-                "user-agent": CHROME_DATA["user-agent"],
-            },
-            "RSS": {
-                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-                "accept-language": "de-DE,de;q=0.9,en;q=0.8,en-US;q=0.7",
-                "cache-control": "no-cache",
-                "pragma": "no-cache",
-                "priority": "u=0, i",
-                "sec-fetch-dest": "document",
-                "sec-fetch-mode": "navigate",
-                "sec-fetch-site": "none",
-                "sec-fetch-user": "?1",
-                "upgrade-insecure-requests": "1",
-                "sec-ch-ua": CHROME_DATA["sec-ch-ua"],
-                "sec-ch-ua-platform": CHROME_DATA["sec-ch-ua-platform"],
-                "user-agent": CHROME_DATA["user-agent"],
-            },
-            "PDF": {
-                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-                "accept-language": "de-DE,de;q=0.9,en;q=0.8,en-US;q=0.7",
-                "cache-control": "no-cache",
-                "pragma": "no-cache",
-                "priority": "u=0, i",
-                "sec-fetch-dest": "document",
-                "sec-fetch-mode": "navigate",
-                "sec-fetch-site": "none",
-                "sec-fetch-user": "?1",
-                "upgrade-insecure-requests": "1",
-                "sec-ch-ua": CHROME_DATA["sec-ch-ua"],
-                "sec-ch-ua-platform": CHROME_DATA["sec-ch-ua-platform"],
-                "user-agent": CHROME_DATA["user-agent"],
-            },
+        # For this site, all three endpoints have the same headers.
+        # If for example, on another site, there is an API endpoint that returns JSON,
+        # the browser will likely have a different "accept" header.
+        headers = {
+            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "accept-language": "de-DE,de;q=0.9,en;q=0.8,en-US;q=0.7",
+            "cache-control": "no-cache",
+            "pragma": "no-cache",
+            "priority": "u=0, i",
+            "sec-fetch-dest": "document",
+            "sec-fetch-mode": "navigate",
+            "sec-fetch-site": "none",
+            "sec-fetch-user": "?1",
+            "upgrade-insecure-requests": "1",
+            "sec-ch-ua": CHROME_DATA["sec-ch-ua"],
+            "sec-ch-ua-platform": CHROME_DATA["sec-ch-ua-platform"],
+            "user-agent": CHROME_DATA["user-agent"],
         }
+        return {"GET": headers, "RSS": headers, "PDF": headers}
 
     def _initialize_logger(self, id: str, debug: bool) -> logging.Logger:
-        """Initialize logger with appropriate logging level.
-        
+        """Initialize logger with logging level.
+
         Args:
             id (str): Logger identifier
             debug (bool): Whether to enable debug logging
-            
+
         Returns:
             logging.Logger: Configured logger instance
         """
         logging.basicConfig(
             level=logging.DEBUG if debug else logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         )
         return logging.getLogger(id)
 
     def retry_wait(self, seconds: int = 2) -> None:
         """Wait between retry attempts.
-        
+
         Args:
             seconds (int): Number of seconds to wait. Defaults to 2.
         """
@@ -138,23 +118,25 @@ class BaseScraper:
         self, url: str, method: str, config: str, expected: int = 200, retries: int = 0
     ) -> requests.Response:
         """Make HTTP request with retry logic.
-        
+
         Args:
             url (str): Target URL
             method (str): HTTP method
             config (str): Header configuration key
             expected (int): Expected HTTP status code. Defaults to 200.
             retries (int): Current retry attempt count. Defaults to 0.
-            
+
         Returns:
             requests.Response: Response object
-            
+
         Raises:
             TooManyRetries: When retry limit is exceeded
         """
         try:
             if retries > RETRY_LIMIT:
-                raise TooManyRetries(f"Failed to get {url} after {RETRY_LIMIT} attempts")
+                raise TooManyRetries(
+                    f"Failed to get {url} after {RETRY_LIMIT} attempts"
+                )
 
             resp = self.session.request(
                 method,
@@ -164,7 +146,9 @@ class BaseScraper:
             )
 
             if resp.status_code != expected:
-                self.logger.warning(f"Unexpected status code {resp.status_code} for {url}")
+                self.logger.warning(
+                    f"Unexpected status code {resp.status_code} for {url}"
+                )
                 self.retry_wait()
                 return self._request(
                     url, method, config, expected=expected, retries=retries + 1
@@ -180,10 +164,10 @@ class BaseScraper:
 
     def get_page(self, url: str) -> requests.Response:
         """Get webpage content.
-        
+
         Args:
             url (str): Target URL
-            
+
         Returns:
             requests.Response: Response object
         """
@@ -191,10 +175,10 @@ class BaseScraper:
 
     def get_page_as_tree(self, url: str) -> etree._ElementTree:
         """Get webpage content as parsed HTML tree.
-        
+
         Args:
             url (str): Target URL
-            
+
         Returns:
             etree._ElementTree: Parsed HTML tree
         """
@@ -205,10 +189,10 @@ class BaseScraper:
 
     def get_rss_feed(self, url: str) -> feedparser.FeedParserDict:
         """Get and parse RSS feed content.
-        
+
         Args:
             url (str): RSS feed URL
-            
+
         Returns:
             feedparser.FeedParserDict: Parsed RSS feed
         """
@@ -217,18 +201,18 @@ class BaseScraper:
 
     def download_file(self, url: str) -> bytes:
         """Download file content.
-        
+
         Args:
             url (str): File URL
-            
+
         Returns:
             bytes: File content
         """
         config = "PDF" if is_pdf(url) else "GET"
         resp = self._request(url, "GET", config)
         return resp.content
-    
-    
+
+
 @dataclass
 class Publication:
     web_title: str
@@ -251,53 +235,75 @@ class Publication:
             raise ValidationError(
                 f"Title length must be between {MIN_TITLE_LENGTH} and {MAX_TITLE_LENGTH} characters",
                 "web_title",
-                self.web_title
+                self.web_title,
             )
 
     def _validate_date(self):
         """Validate publication date is within reasonable bounds."""
         if not isinstance(self.published_at, datetime):
-            raise ValidationError("Published date must be a datetime object", "published_at", self.published_at)
-        
+            raise ValidationError(
+                "Published date must be a datetime object",
+                "published_at",
+                self.published_at,
+            )
+
         now = datetime.now()
         if self.published_at > now + FUTURE_TOLERANCE:
-            raise ValidationError("Publication date cannot be too far in the future", "published_at", self.published_at)
+            raise ValidationError(
+                "Publication date cannot be too far in the future",
+                "published_at",
+                self.published_at,
+            )
         if self.published_at < now - PAST_TOLERANCE:
-            raise ValidationError("Publication date cannot be too far in the past", "published_at", self.published_at)
+            raise ValidationError(
+                "Publication date cannot be too far in the past",
+                "published_at",
+                self.published_at,
+            )
 
     def _validate_url(self):
         """Validate web URL format and structure."""
         if not isinstance(self.web_url, str):
             raise ValidationError("URL must be a string", "web_url", self.web_url)
-        
+
         try:
             parsed = urllib.parse.urlparse(self.web_url)
             if not all([parsed.scheme, parsed.netloc]):
                 raise ValidationError("Invalid URL format", "web_url", self.web_url)
         except Exception as e:
-            raise ValidationError(f"URL parsing failed: {str(e)}", "web_url", self.web_url)
+            raise ValidationError(
+                f"URL parsing failed: {str(e)}", "web_url", self.web_url
+            )
 
     def _validate_related_urls(self):
         """Validate related URLs list."""
         if not isinstance(self.related_urls, list):
-            raise ValidationError("Related URLs must be a list", "related_urls", self.related_urls)
-        
+            raise ValidationError(
+                "Related URLs must be a list", "related_urls", self.related_urls
+            )
+
         if len(self.related_urls) > MAX_RELATED_URLS:
             raise ValidationError(
                 f"Too many related URLs (max: {MAX_RELATED_URLS})",
                 "related_urls",
-                len(self.related_urls)
+                len(self.related_urls),
             )
 
         for url in self.related_urls:
             if not isinstance(url, str):
-                raise ValidationError("Related URL must be a string", "related_urls", url)
+                raise ValidationError(
+                    "Related URL must be a string", "related_urls", url
+                )
             try:
                 parsed = urllib.parse.urlparse(url)
                 if not all([parsed.scheme, parsed.netloc]):
-                    raise ValidationError("Invalid related URL format", "related_urls", url)
+                    raise ValidationError(
+                        "Invalid related URL format", "related_urls", url
+                    )
             except Exception as e:
-                raise ValidationError(f"Related URL parsing failed: {str(e)}", "related_urls", url)
+                raise ValidationError(
+                    f"Related URL parsing failed: {str(e)}", "related_urls", url
+                )
 
 
 class BundesbankScraper(BaseScraper):
@@ -306,9 +312,10 @@ class BundesbankScraper(BaseScraper):
         self.base = BUNDESBANK_BASE_URL
 
     def parse_rss_articles(self, feed: feedparser.FeedParserDict) -> list[Publication]:
-        """Parse RSS feed content and extract articles with enhanced validation."""
         if not feed.entries:
-            raise ParserException("Empty RSS feed", {"feed_status": feed.get("status", "unknown")})
+            raise ParserException(
+                "Empty RSS feed", {"feed_status": feed.get("status", "unknown")}
+            )
 
         publications = []
         errors = []
@@ -316,14 +323,21 @@ class BundesbankScraper(BaseScraper):
         for entry in feed.entries:
             try:
                 # Validate required fields exist
-                if not all(hasattr(entry, attr) for attr in ['title', 'link', 'published']):
-                    missing_attrs = [attr for attr in ['title', 'link', 'published'] 
-                                   if not hasattr(entry, attr)]
-                    raise ParserException(f"Missing required attributes: {missing_attrs}")
+                if not all(
+                    hasattr(entry, attr) for attr in ["title", "link", "published"]
+                ):
+                    missing_attrs = [
+                        attr
+                        for attr in ["title", "link", "published"]
+                        if not hasattr(entry, attr)
+                    ]
+                    raise ParserException(
+                        f"Missing required attributes: {missing_attrs}"
+                    )
 
                 # Clean and validate title
                 title = entry.title.strip()
-                
+
                 # Validate and parse date
                 try:
                     published_at = datetime.strptime(entry.published, DATE_FORMAT_RSS)
@@ -331,17 +345,17 @@ class BundesbankScraper(BaseScraper):
                     raise ParserException(f"Invalid date format: {str(e)}")
 
                 # Validate URL
-                if not entry.link.startswith(('http://', 'https://')):
+                if not entry.link.startswith(("http://", "https://")):
                     raise ParserException(f"Invalid URL format: {entry.link}")
 
                 # Get and validate enclosures
                 related_urls = []
-                if hasattr(entry, 'enclosures'):
+                if hasattr(entry, "enclosures"):
                     for enclosure in entry.enclosures:
-                        if not hasattr(enclosure, 'href'):
+                        if not hasattr(enclosure, "href"):
                             continue
                         url = enclosure.href
-                        if url.startswith(('http://', 'https://')):
+                        if url.startswith(("http://", "https://")):
                             related_urls.append(url)
 
                 # Create and validate publication
@@ -349,21 +363,25 @@ class BundesbankScraper(BaseScraper):
                     web_title=title,
                     web_url=entry.link,
                     published_at=published_at,
-                    related_urls=related_urls
+                    related_urls=related_urls,
                 )
                 publications.append(pub)
 
             except (ParserException, ValidationError) as e:
-                errors.append({
-                    'entry': entry.get('title', 'Unknown'),
-                    'error': str(e),
-                    'details': getattr(e, 'details', {})
-                })
+                errors.append(
+                    {
+                        "entry": entry.get("title", "Unknown"),
+                        "error": str(e),
+                        "details": getattr(e, "details", {}),
+                    }
+                )
                 self.logger.warning(f"Failed to parse RSS entry: {str(e)}")
                 continue
 
         if errors:
-            self.logger.warning(f"Encountered {len(errors)} errors while parsing RSS feed")
+            self.logger.warning(
+                f"Encountered {len(errors)} errors while parsing RSS feed"
+            )
             for error in errors:
                 self.logger.debug(f"RSS parsing error: {error}")
 
@@ -373,22 +391,23 @@ class BundesbankScraper(BaseScraper):
         return publications
 
     def _parse_article(self, article: etree._Element) -> Optional[Publication]:
-        """Parse single article with enhanced validation."""
         try:
             # Extract and validate link
             link_elem = article.xpath(".//a[contains(@class, 'teasable__link')]")
             if not link_elem:
                 raise ParserException("Link element not found")
-            
+
             link = urllib.parse.urljoin(self.base, link_elem[0].get("href"))
             if not link:
                 raise ParserException("Empty link")
 
             # Extract and validate title
-            title_elem = article.xpath(".//div[contains(@class, 'teasable__title--marked')]//div")
+            title_elem = article.xpath(
+                ".//div[contains(@class, 'teasable__title--marked')]//div"
+            )
             if not title_elem:
                 raise ParserException("Title element not found")
-            
+
             web_title = title_elem[0].text.strip()
             if not web_title:
                 raise ParserException("Empty title")
@@ -410,7 +429,7 @@ class BundesbankScraper(BaseScraper):
                 web_title=web_title,
                 web_url=link,
                 published_at=published_at,
-                related_urls=[]
+                related_urls=[],
             )
 
         except Exception as e:
@@ -418,16 +437,19 @@ class BundesbankScraper(BaseScraper):
             return None
 
     def parse_web_articles(self, tree: etree._ElementTree) -> list[Publication]:
-        """Parse web articles with enhanced validation and error collection."""
         try:
             publications = []
             errors = []
 
-            article_list = tree.xpath('//*[@id="main-content"]/div/div/main/div[2]/div/div/nav/ul')
+            article_list = tree.xpath(
+                '//*[@id="main-content"]/div/div/main/div[2]/div/div/nav/ul'
+            )
             if not article_list:
                 raise ParserException("Article list not found")
 
-            articles = article_list[0].xpath(".//div[contains(@class, 'collection__item')]")
+            articles: list[etree._Element] = article_list[0].xpath(
+                ".//div[contains(@class, 'collection__item')]"
+            )
             if not articles:
                 raise ParserException("No articles found in list")
 
@@ -436,18 +458,24 @@ class BundesbankScraper(BaseScraper):
                     pub = self._parse_article(article)
                     if pub:
                         if not is_pdf(pub.web_url):
-                            pub.related_urls = self.get_article_related_urls(pub.web_url)
+                            pub.related_urls = self.get_article_related_urls(
+                                pub.web_url
+                            )
                         publications.append(pub)
                 except (ParserException, ValidationError) as e:
-                    errors.append({
-                        'article': article.get('class', 'Unknown'),
-                        'error': str(e),
-                        'details': getattr(e, 'details', {})
-                    })
+                    errors.append(
+                        {
+                            "article": article.get("class", "Unknown"),
+                            "error": str(e),
+                            "details": getattr(e, "details", {}),
+                        }
+                    )
                     continue
 
             if errors:
-                self.logger.warning(f"Encountered {len(errors)} errors while parsing web articles")
+                self.logger.warning(
+                    f"Encountered {len(errors)} errors while parsing web articles"
+                )
                 for error in errors:
                     self.logger.debug(f"Web parsing error: {error}")
 
@@ -472,7 +500,7 @@ class BundesbankScraper(BaseScraper):
                     link_elem = file.xpath(".//a")
                     if not link_elem:
                         continue
-                        
+
                     url = link_elem[0].get("href")
                     if not url:
                         continue
@@ -481,7 +509,7 @@ class BundesbankScraper(BaseScraper):
                     parsed = urllib.parse.urlparse(url)
                     if not all([parsed.scheme, parsed.netloc]):
                         url = urllib.parse.urljoin(self.base, url)
-                    
+
                     file_urls.append(url)
                 except Exception as e:
                     self.logger.warning(f"Failed to parse related URL: {str(e)}")
@@ -492,7 +520,7 @@ class BundesbankScraper(BaseScraper):
         except Exception as e:
             self.logger.error(f"Failed to parse related URLs: {str(e)}")
             return []
-        
+
     def load_rss_link(self, url: str) -> list[Publication]:
         self.logger.info(f"Getting rss feed from {url}")
         rss_feed = self.get_rss_feed(url)
@@ -509,13 +537,13 @@ class BundesbankScraper(BaseScraper):
         return self.parse_related_urls(tree)
 
 
-# Example usage
 if __name__ == "__main__":
     s = BundesbankScraper(False)
-    
 
     try:
-        rss_pubs = s.load_rss_link(f"{BUNDESBANK_BASE_URL}/service/rss/de/633286/feed.rss")
+        rss_pubs = s.load_rss_link(
+            f"{BUNDESBANK_BASE_URL}/service/rss/de/633286/feed.rss"
+        )
         print(f"Successfully parsed {len(rss_pubs)} RSS publications")
     except ParserException as e:
         print(f"Failed to parse RSS feed: {str(e)}")
@@ -526,12 +554,14 @@ if __name__ == "__main__":
         print(f"Field: {e.field}, Value: {e.value}")
     except TooManyRetries as e:
         print(f"Retry limit exceeded: {str(e)}")
-        
+
     try:
         web_pubs = s.load_web_link(f"{BUNDESBANK_BASE_URL}/de/presse/stellungnahmen")
-        print(f"Successfully parsed {len(web_pubs)} WEB publications")
+        print(f"Successfully parsed {len(web_pubs)} web publications")
+        for p in web_pubs:
+            print(f" - {p.web_title}, related={len(p.related_urls)}")
     except ParserException as e:
-        print(f"Failed to parse WEB feed: {str(e)}")
+        print(f"Failed to parse web feed: {str(e)}")
         if e.details:
             print(f"Error details: {e.details}")
     except ValidationError as e:
@@ -551,4 +581,3 @@ if __name__ == "__main__":
             print(f"Failed to download PDF: {str(e)}")
         except IOError as e:
             print(f"Failed to save PDF: {str(e)}")
-    # print("\n\nDownloaded PDF, saved to sample_pdf.pdf")

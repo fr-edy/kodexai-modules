@@ -59,3 +59,5 @@ if __name__ == "__main__":
 	web_pubs = load_web_link("https://www.bundesbank.de/de/presse/stellungnahmen")
 	pdf_bytes = download_file("https://www.bundesbank.de/resource/blob/696204/ffdf2c3e5dc30961892a835482998453/472B63F073F071307366337C94F8C870/2016-01-11-ogaw-download.pdf")
 ```
+
+---
