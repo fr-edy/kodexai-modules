@@ -15,7 +15,7 @@ class Regulators(str, Enum):
     The string value contains the official abbreviation of the regulator."""
 
     MAS = "MAS"  # Monetary Authority of Singapore (SG)
-    # TODO: add ECB
+    ECB = "ECB"  # European Central Bank (EU)
 
     @classmethod
     def from_string(cls, regulator_str: str):
@@ -29,21 +29,21 @@ class Regulators(str, Enum):
         """Return the full name of the regulator."""
         return {
             Regulators.MAS: "Monetary Authority of Singapore",
-            # TODO: add ECB
+            Regulators.ECB: "European Central Bank",
         }[self]
 
     @property
     def language(self) -> str:
         return {
             Regulators.MAS: "English",
-            # TODO: add ECB
+            Regulators.ECB: "English",
         }[self]
 
     @property
     def base_url(self) -> str:
         return {
             Regulators.MAS: "https://www.mas.gov.sg",
-            # TODO: add ECB
+            Regulators.ECB: "https://www.bankingsupervision.europa.eu/"
         }[self]
 
 
