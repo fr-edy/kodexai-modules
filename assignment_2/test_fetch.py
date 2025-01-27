@@ -18,7 +18,7 @@ class FoeDBFetcher:
         self.loaded_db = {}
         self.chunk_cache = {}
 
-    async def fetch_json(self, url: str) -> Dict:
+    def fetch_json(self, url: str) -> Dict:
         """Fetch JSON data from a URL."""
         txt = load_page_content(url)
         return loads(txt)
@@ -52,10 +52,10 @@ class FoeDBFetcher:
 
         raise ValueError(f"Unknown request type: {request}")
 
-    async def refresh_db_metadata(self):
+    def refresh_db_metadata(self):
         """Refresh database metadata."""
         self.chunk_cache = {}
-        await self.load_db()
+        self.load_db()
 
     def get_chunk_id(self, sort_id: int) -> int:
         """Calculate chunk ID from sort ID."""
@@ -92,24 +92,24 @@ class FoeDBFetcher:
         result["$foedb:id"] = sort_id
         return result
 
-    async def get_chunk(self, chunk_id: int) -> List:
+    def get_chunk(self, chunk_id: int) -> List:
         """Fetch chunk data if not in cache."""
         if chunk_id not in self.chunk_cache:
             chunk_group_id = self.get_chunk_group(chunk_id)
-            self.chunk_cache[chunk_id] = await self.fetch_json(
+            self.chunk_cache[chunk_id] = self.fetch_json(
                 self.get_url("data", str(chunk_group_id), chunk_id)
             )
         return self.chunk_cache[chunk_id]
 
-    async def get_data_by_id(self, sort_id: int) -> Dict:
+    def get_data_by_id(self, sort_id: int) -> Dict:
         """Get item data by sort ID."""
-        chunk = await self.get_chunk(self.get_chunk_id(sort_id))
+        chunk = self.get_chunk(self.get_chunk_id(sort_id))
         return self.build_data_from_chunk(sort_id, chunk)
 
-    async def load_db(self):
+    def load_db(self):
         """Load database metadata and initialize structures."""
         # Fetch versions
-        versions = await self.fetch_json(self.get_url("versions"))
+        versions = self.fetch_json(self.get_url("versions"))
 
         # Set version and hash
         self.loaded_db["database_version"] = (
@@ -118,12 +118,12 @@ class FoeDBFetcher:
         self.loaded_db["database_hash"] = versions[0]["hash"]
 
         # Fetch metadata
-        self.loaded_db["metadata"] = await self.fetch_json(self.get_url("metadata"))
+        self.loaded_db["metadata"] = self.fetch_json(self.get_url("metadata"))
 
         # Initialize indexes
         self.loaded_db["indexes"] = {}
         for index in self.loaded_db["metadata"]["indexes"]:
-            index_values = await self.fetch_json(self.get_url("index", index))
+            index_values = self.fetch_json(self.get_url("index", index))
 
             self.loaded_db["indexes"][index] = {}
             for idx, index_value in enumerate(index_values):
@@ -136,9 +136,9 @@ class FoeDBFetcher:
                     "sort_ids": [],
                 }
 
-    async def fetch_all_items(self, batch_size: int = 100) -> List[Dict]:
+    def fetch_all_items(self, batch_size: int = 100) -> List[Dict]:
         """Fetch all items from the database."""
-        await self.load_db()
+        self.load_db()
         total_records = self.loaded_db["metadata"]["total_records"]
 
         all_items = []
@@ -146,11 +146,10 @@ class FoeDBFetcher:
             batch_items = []
             end_idx = min(start_idx + batch_size, total_records)
 
-            # Create tasks for each item in the batch
-            tasks = [self.get_data_by_id(idx) for idx in range(start_idx, end_idx)]
+            # Fetch each item in the batch
+            for idx in range(start_idx, end_idx):
+                batch_items.append(self.get_data_by_id(idx))
 
-            # Execute batch of requests concurrently
-            batch_items = await asyncio.gather(*tasks)
             all_items.extend(batch_items)
 
             print(f"Fetched items {start_idx} to {end_idx} of {total_records}")
@@ -158,9 +157,7 @@ class FoeDBFetcher:
         return all_items
 
 
-async def main():
-    # Example usage
-    # TODO parse version dynamically
+def main():
     config = DatabaseConfig(
         foedb_host="https://www.ecb.europa.eu/foedb/dbs/foedb",
         database_name="publications.en",
@@ -169,7 +166,7 @@ async def main():
     fetcher = FoeDBFetcher(config)
 
     try:
-        items = await fetcher.fetch_all_items()
+        items = fetcher.fetch_all_items()
         print(f"Successfully fetched {len(items)} items")
 
         # Example: Save to JSON file
@@ -181,4 +178,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
