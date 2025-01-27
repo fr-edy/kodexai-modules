@@ -3,3 +3,4 @@ __pycache__/
 *.pdf
 scraper/
 .pytest_cache/
+.DS_Store
