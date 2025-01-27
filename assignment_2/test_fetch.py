@@ -161,7 +161,6 @@ async def main():
     config = DatabaseConfig(
         foedb_host="https://www.ecb.europa.eu/foedb/dbs/foedb",
         database_name="publications.en",
-        database_version="1737978659"  # This might need to be updated if the version changes
     )
 
     
