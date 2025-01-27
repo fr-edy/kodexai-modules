@@ -24,7 +24,7 @@ def load_page_content(url: str, params: dict = None) -> str:
     log.info(f"Loading link '{url}' with params: {params}")
 
     for attempt in range(3):
-        resp = requests.get(url, headers=HEADERS)
+        resp = requests.get(url, params=params, headers=HEADERS)
         if resp.ok and resp.content:
             break
         log.warning(
