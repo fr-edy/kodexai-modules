@@ -80,31 +80,53 @@ def ecb_load_regulations():
         for year in range(2015, datetime.now().year + 1)
     ] # Reverse the list to start with the current year
     
-    db_publications = ecb_scraper.load_publications_from_db(RegUpdateTypes.REGULATION, amount_to_fetch=10000)
+    db_publications = ecb_scraper.load_publications_from_db(updates_type, amount_to_fetch=10) # https://www.ecb.europa.eu/press/pubbydate/html/index.en.html?name_of_publication=Letters%20to%20MEPs
     log.info(f"Loaded {len(db_publications)} {regulator.value} {updates_type.value} items from the database")
-    
-    # load publications https://www.ecb.europa.eu/press/pubbydate/html/index.en.html?name_of_publication=Letters%20to%20MEPs with load_publications_from_db
     
         
     regulations = []
     regulations += db_publications
     
-    # for link in regulation_links:
-    #     try:
-    #         regulations += ecb_scraper.load_publications(link, updates_type=updates_type)
-    #         log.info(f"Found {len(regulations)} {regulator.value} {updates_type.value} items")
-    #     except Exception as e:
-    #         log.error(f"Failed to load {regulator.value} {updates_type.value} from {link}", exc_info=e)
-    #         continue
+    for link in regulation_links:
+        try:
+            regulations += ecb_scraper.load_publications(link, updates_type=updates_type)
+            log.info(f"Found {len(regulations)} {regulator.value} {updates_type.value} items")
+        except Exception as e:
+            log.error(f"Failed to load {regulator.value} {updates_type.value} from {link}", exc_info=e)
+            continue
 
-    # for publication in regulations:
-    #     process_publication(publication, namespace)
+    for publication in regulations:
+        process_publication(publication, namespace)
 
 def ecb_load_news():
     
     # scrape https://www.ecb.europa.eu/press/stats/paysec/html/index.en.html with load_publications
     # load https://www.ecb.europa.eu/press/pubbydate/html/index.en.html?name_of_publication=Press%20release with load_publications_from_db
-    pass  # TODO
+
+    regulator = Regulators.ECB
+    namespace = "ecb-news"
+    updates_type = RegUpdateTypes.NEWS
+    regulation_links = [
+      "https://www.ecb.europa.eu/press/stats/paysec/html/index.en.html"
+    ] 
+    
+    db_publications = ecb_scraper.load_publications_from_db(updates_type, amount_to_fetch=10) # https://www.ecb.europa.eu/press/pubbydate/html/index.en.html?name_of_publication=Letters%20to%20MEPs
+    log.info(f"Loaded {len(db_publications)} {regulator.value} {updates_type.value} items from the database")
+    
+        
+    regulations = []
+    regulations += db_publications
+    
+    for link in regulation_links:
+        try:
+            regulations += ecb_scraper.load_publications(link, updates_type=updates_type)
+            log.info(f"Found {len(regulations)} {regulator.value} {updates_type.value} items")
+        except Exception as e:
+            log.error(f"Failed to load {regulator.value} {updates_type.value} from {link}", exc_info=e)
+            continue
+
+    for publication in regulations:
+        process_publication(publication, namespace)
 
 
 def process_publication(publication: RegulatorPublication, namespace: str):

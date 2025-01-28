@@ -82,7 +82,10 @@ def load_publications_from_db(type: RegUpdateTypes, amount_to_fetch: int = 10) -
     return _load_publications_db(type, pub_type, amount_to_fetch)
 
 def _load_publications_db(regType: RegUpdateTypes, type: NewsPublicationsType, amount_to_fetch:int=10):
-    releases = _fetch_foe_db_data(amount_to_fetch=100000) # Is returned descending by date, so newest first
+    # TODO: Define a good number of publications to fetch to always have at least the wanted amount of publications of the given type
+    # There is no filter server side so the website fetches all publications and filters them client side
+    # Total number of entries is around 17800 and it takes around 5 seconds to fetch all
+    releases = _fetch_foe_db_data(amount_to_fetch=5000 ) # Is returned descending by date, so newest first
     matching_releases = []
     for r in releases:
         if r["type"] == type:
