@@ -2,40 +2,68 @@ import logging
 import unicodedata
 from datetime import datetime
 from urllib.parse import urljoin
-import json, csv, io
+import json
+import csv
+import io
 from typing import List, Dict, Any, Optional
 from lxml.etree import HTML
-from enum import Enum
-from models import Regulators, RegUpdateTypes, RegulatorPublication
 from utils import load_page_content
+from models import Regulators, RegUpdateTypes
 
 log = logging.getLogger(__name__)
 
-REGULATOR = Regulators.ECB
+# Constants to replace enums
+REGULATOR_ECB = {
+    "name": Regulators.ECB,
+    "base_url": Regulators.ECB.base_url
+}
 
+# Publication types constants
+UPDATE_TYPE_REGULATION = "REGULATION"
+UPDATE_TYPE_PRESS_RELEASE = "PRESS_RELEASE"
+
+# News publication types constants
+NEWS_TYPE_PRESS_RELEASE = 1  # Press releases / Press 
+NEWS_TYPE_LETTER_TO_MEPs = 18  # Letter to MEPs
+
+def create_publication(
+    web_title: str,
+    published_at: datetime,
+    web_url: str,
+    update_type: RegUpdateTypes,
+    category: str = "",
+    related_urls: List[str] = None
+) -> Dict:
+    """Creates a publication dictionary with the given parameters."""
+    return {
+        "regulator": REGULATOR_ECB,
+        "type": update_type,
+        "web_title": web_title,
+        "published_at": published_at,
+        "web_url": web_url,
+        "category": category,
+        "related_urls": related_urls or []
+    }
 
 def load_publications(
-    publications_url: str, updates_type: RegUpdateTypes
-) -> list[RegulatorPublication]:
-    """Loads the last 10 publications from the ECB website and extracts the PDF links (regulations only)."""
+    publications_url: str,
+    updates_type: str
+) -> List[Dict]:
+    """Loads the last 10 publications from the ECB website and extracts the PDF links."""
     return _load_last_publications(publications_url, updates_type)
 
-def load_publications_lazy_loaded(publications_url:str, updates_type:RegUpdateTypes) -> list[RegulatorPublication]:
-    """Loads the last 10 publications from the ECB website and extracts the PDF links (regulations only)."""
+def load_publications_lazy_loaded(
+    publications_url: str,
+    updates_type: str
+) -> List[Dict]:
+    """Loads the last 10 publications from the ECB website and extracts the PDF links."""
     return _load_last_publications(publications_url, updates_type)
 
 def _load_last_publications(
-    url: str, updates_type: RegUpdateTypes
-) -> list[RegulatorPublication]:
-    """Loads and parses the most recent publications from the ECB website.
-
-    Args:
-        url: The URL to fetch publications from
-        updates_type: Type of regulatory updates to process
-
-    Returns:
-        List of RegulatorPublication objects
-    """
+    url: str,
+    updates_type: str
+) -> List[Dict]:
+    """Loads and parses the most recent publications from the ECB website."""
     html = HTML(load_page_content(url))
     parsed_publications = []
 
@@ -45,23 +73,21 @@ def _load_last_publications(
         date_text = dt.xpath(".//text()")[0].strip()
         title_element = dd.xpath(".//a")
         title_text = title_element[0].text.strip()
-        web_url = urljoin(REGULATOR.base_url, title_element[0].get("href"))
+        web_url = urljoin(REGULATOR_ECB["base_url"], title_element[0].get("href"))
 
         # Get any PDF links from the description
         related_urls = [
-            urljoin(REGULATOR.base_url, href.strip())
+            urljoin(REGULATOR_ECB["base_url"], href.strip())
             for href in dd.xpath(".//dl//a/@href")
         ]
 
-        # Create publication object with normalized text
-        publication = RegulatorPublication(
-            regulator=REGULATOR,
-            type=updates_type,
+        # Create publication dictionary with normalized text
+        publication = create_publication(
             web_title=unicodedata.normalize("NFKC", title_text),
             published_at=datetime.strptime(date_text, "%d %B %Y"),
             web_url=web_url,
-            category="",
-            related_urls=related_urls,
+            update_type=updates_type,
+            related_urls=related_urls
         )
         parsed_publications.append(publication)
 
@@ -70,51 +96,45 @@ def _load_last_publications(
     )
     return parsed_publications
 
-class NewsPublicationsType(int, Enum):
-    """Types of news publications parsed from ECB."""
-    
-    PRESS_RELEASE = 1  # Press releases / Press 
-    LETTER_TO_MEPs = 18  # Letter to MEPs / Regulations equivalent of RegUpdateTypes.REGULATION
+def load_publications_from_db(update_type: RegUpdateTypes, amount_to_fetch: int = 10) -> List[Dict]:
+    """Loads the last publications from the ECB database."""
+    pub_type = NEWS_TYPE_LETTER_TO_MEPs if update_type == UPDATE_TYPE_REGULATION else NEWS_TYPE_PRESS_RELEASE
+    return _load_publications_db(update_type, pub_type, amount_to_fetch)
 
-def load_publications_from_db(type: RegUpdateTypes, amount_to_fetch: int = 10) -> list[RegulatorPublication]:
-    """Loads the last 10 publications from the ECB database."""
-    pub_type = NewsPublicationsType.LETTER_TO_MEPs if type == RegUpdateTypes.REGULATION else NewsPublicationsType.PRESS_RELEASE
-    return _load_publications_db(type, pub_type, amount_to_fetch)
-
-def _load_publications_db(regType: RegUpdateTypes, type: NewsPublicationsType, amount_to_fetch:int=10):
-    # TODO: Define a good number of publications to fetch to always have at least the wanted amount of publications of the given type
-    # There is no filter server side so the website fetches all publications and filters them client side
-    # Total number of entries is around 17800 and it takes around 5 seconds to fetch all
-    releases = _fetch_foe_db_data(amount_to_fetch=5000 ) # Is returned descending by date, so newest first
+def _load_publications_db(update_type: RegUpdateTypes, pub_type: int, amount_to_fetch: int = 10) -> List[Dict]:
+    """Internal function to load publications from database."""
+    releases = _fetch_foe_db_data(amount_to_fetch=5000)  # Returns descending by date
     matching_releases = []
-    for r in releases:
-        if r["type"] == type:
-            matching_releases.append(r)
+    
+    for release in releases:
+        if release["type"] == pub_type:
+            matching_releases.append(release)
             if len(matching_releases) >= amount_to_fetch:
                 break
-    return [ _parse_db_publications_as_publication(regType, r) for r in matching_releases ]
+                
+    return [_parse_db_publications_as_publication(update_type, r) for r in matching_releases]
 
-def _parse_db_publications_as_publication(type:RegUpdateTypes, release: Dict) -> RegulatorPublication:
-    return RegulatorPublication(
-        regulator=REGULATOR,
-        type=type,
-        category="" if release["Taxonomy"] is None else release["Taxonomy"],
+def _parse_db_publications_as_publication(update_type: RegUpdateTypes, release: Dict) -> Dict:
+    """Converts a database release to a publication dictionary."""
+    return create_publication(
         web_title=release["publicationProperties"]["Title"],
         published_at=datetime.fromtimestamp(release["pub_timestamp"]),
-        web_url=urljoin(REGULATOR.base_url, release["documentTypes"][0]),
+        web_url=urljoin(REGULATOR_ECB["base_url"], release["documentTypes"][0]),
+        update_type=update_type,
+        category="" if release["Taxonomy"] is None else release["Taxonomy"],
         related_urls=[
-            urljoin(REGULATOR.base_url, pdf_url)
+            urljoin(REGULATOR_ECB["base_url"], pdf_url)
             for pub in release["childrenPublication"]
             for pdf_url in pub["pdfUrls"]
         ]
     )
-    
-def _fetch_foe_db_data(host: str = "https://www.ecb.europa.eu/foedb/dbs/foedb", 
-                     database_name: str = "publications.en", 
-                     amount_to_fetch:int=10) -> List[Dict]:
-    """
-    Fetch all data from FoeDB with support for parsing related publications
-    """
+
+def _fetch_foe_db_data(
+    host: str = "https://www.ecb.europa.eu/foedb/dbs/foedb",
+    database_name: str = "publications.en",
+    amount_to_fetch: int = 10
+) -> List[Dict]:
+    """Fetches data from FoeDB with support for parsing related publications."""
     try:
         # Initialize basic configurations
         config = {
@@ -172,7 +192,6 @@ def _fetch_foe_db_data(host: str = "https://www.ecb.europa.eu/foedb/dbs/foedb",
                     result[field_name] = loaded_db["loaded_maps"][field_name]["index"][data[i]]
                 else:
                     value = data[i]
-                    # Special handling for relatedPublications field
                     if field_name in ["relatedPublications", "childrenPublication"] and isinstance(value, list):
                         parsed_publications = []
                         for pub in value:
@@ -207,11 +226,8 @@ def _fetch_foe_db_data(host: str = "https://www.ecb.europa.eu/foedb/dbs/foedb",
                     "sort_ids": [],
                 }
         
-        # Fetch all items
+        # Fetch items
         total_records = loaded_db["metadata"]["total_records"]
-        all_items = []
-        
-        # Fetch only amount_to_fetch items
         end_idx = min(amount_to_fetch, total_records)
         all_items = [get_data_by_id(idx) for idx in range(end_idx)]
         print(f"Fetched {end_idx} items out of {total_records} total records")
@@ -223,13 +239,10 @@ def _fetch_foe_db_data(host: str = "https://www.ecb.europa.eu/foedb/dbs/foedb",
         return []
 
 def _parse_related_publication(raw_data: str) -> Dict:
-    """
-    Parse a single related publication string into a structured dictionary.
-    """
+    """Parses a single related publication string into a structured dictionary."""
     try:
-        # Use CSV reader to properly handle quoted fields
         reader = csv.reader(io.StringIO(raw_data))
-        fields = next(reader)  # Get the single row
+        fields = next(reader)
         
         # Extract the known fields
         pub_id = fields[0]
@@ -250,7 +263,6 @@ def _parse_related_publication(raw_data: str) -> Dict:
         except (json.JSONDecodeError, IndexError):
             metadata = {}
             
-        # Create structured output
         return {
             "publicationId": pub_id,
             "timestamp": timestamp,
