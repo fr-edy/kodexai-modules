@@ -9,11 +9,14 @@ from models import Regulators, RegUpdateTypes, RegulatorPublication
 from utils import load_page_content
 
 log = logging.getLogger(__name__)
+log.setLevel(logging.ERROR)
 
 REGULATOR = Regulators.MAS
 
 
-def load_publications(publications_url: str, updates_type: RegUpdateTypes) -> list[RegulatorPublication]:
+def load_publications(
+    publications_url: str, updates_type: RegUpdateTypes
+) -> list[RegulatorPublication]:
     """Loads the last 10 publications from the MAS website and extracts the PDF links (regulations only)."""
 
     publications = []
@@ -22,14 +25,18 @@ def load_publications(publications_url: str, updates_type: RegUpdateTypes) -> li
 
         if updates_type == RegUpdateTypes.REGULATION:
             publication.related_urls += _get_related_links(publication.web_url)
-            log.info(f"Found {len(publication.related_urls)} related links for {publication}")
+            log.info(
+                f"Found {len(publication.related_urls)} related links for {publication}"
+            )
 
         log.info(f"Scraped publication: {publication}")
         publications.append(publication)
     return publications
 
 
-def _load_last_publications(url: str, updates_type: RegUpdateTypes) -> list[RegulatorPublication]:
+def _load_last_publications(
+    url: str, updates_type: RegUpdateTypes
+) -> list[RegulatorPublication]:
     """Loads the last 10 publications (no pagination handling) from the MAS website.
     It parses the publications feed and scrapes the pub date, URL, title and opt focus area tag from the preview.
     Throws exceptions if something major goes wrong."""
@@ -39,22 +46,38 @@ def _load_last_publications(url: str, updates_type: RegUpdateTypes) -> list[Regu
 
     parsed_publications = []
     for publication in publications:
-        date_text_elements = publication.xpath(".//div[contains(@class, 'ts:xs') and contains(text(), 'Date:')]/text()")
-        link_elements = publication.xpath(".//a[contains(@class, 'mas-link--no-underline')]/@href")
-        title_elements = publication.xpath(
-            ".//a[contains(@class, 'mas-link--no-underline')]" "/span[@class='mas-link__text']/text()"
+        date_text_elements = publication.xpath(
+            ".//div[contains(@class, 'ts:xs') and contains(text(), 'Date:')]/text()"
         )
-        category_elements = publication.xpath(".//div[contains(@class, 'mas-tag__text')]/text()")
+        link_elements = publication.xpath(
+            ".//a[contains(@class, 'mas-link--no-underline')]/@href"
+        )
+        title_elements = publication.xpath(
+            ".//a[contains(@class, 'mas-link--no-underline')]"
+            "/span[@class='mas-link__text']/text()"
+        )
+        category_elements = publication.xpath(
+            ".//div[contains(@class, 'mas-tag__text')]/text()"
+        )
 
-        if not date_text_elements or not link_elements or not title_elements or not category_elements:
+        if (
+            not date_text_elements
+            or not link_elements
+            or not title_elements
+            or not category_elements
+        ):
             log.warning(f"Skipping a publication due to missing data.")
             continue
 
         pub = RegulatorPublication(
             regulator=REGULATOR,
             type=updates_type,
-            web_title=unicodedata.normalize("NFKC", title_elements[0].strip()),  # Correct the encoding
-            published_at=datetime.strptime(date_text_elements[0].strip().split(": ")[1], "%d %B %Y"),
+            web_title=unicodedata.normalize(
+                "NFKC", title_elements[0].strip()
+            ),  # Correct the encoding
+            published_at=datetime.strptime(
+                date_text_elements[0].strip().split(": ")[1], "%d %B %Y"
+            ),
             web_url=urljoin(REGULATOR.base_url, link_elements[0].strip()),
             category=category_elements[0].strip(),
         )

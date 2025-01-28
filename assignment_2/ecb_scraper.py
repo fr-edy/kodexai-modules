@@ -7,10 +7,11 @@ import csv
 import io
 from typing import List, Dict, Any, Optional
 from lxml.etree import HTML
-from utils import load_page_content
+from utils import load_page_content, time_cache
 from models import Regulators, RegUpdateTypes
 
 log = logging.getLogger(__name__)
+
 
 # Constants to replace enums
 REGULATOR_ECB = {"name": Regulators.ECB, "base_url": Regulators.ECB.base_url}
@@ -125,47 +126,58 @@ def _get_chunk(chunk_id: int, loaded_db: dict) -> list:
     return _fetch_json(_get_url("data", loaded_db, str(chunk_group_id), chunk_id))
 
 
-def _get_data_by_id(sort_id: int, loaded_db: dict) -> dict:
+def _get_data_by_id(chunk_id: int, loaded_db: dict) -> List[Dict]:
     """
-    Retrieves data from database by sort ID and constructs a dictionary with mapped values.
+    Retrieves data from database by sort ID and constructs a list of dictionaries with mapped values.
     The function gets a chunk of data based on the sort ID, maps the values according to loaded maps,
     and handles special cases for publication-related fields.
+
     Args:
         sort_id (int): The sorting ID used to locate the data in the database.
+
     Returns:
-        Dict: A dictionary containing:
+        List[Dict]: A list of dictionaries containing:
             - Mapped values from the database using header field names as keys
             - Original values for unmapped fields
             - Parsed publication data for 'relatedPublications' and 'childrenPublication' fields
             - Original sort_id as '$foedb:id'
     """
-    chunk = _get_chunk(sort_id, loaded_db)
+    chunk = _get_chunk(chunk_id, loaded_db)
     header = loaded_db["metadata"]["header"]
-    start = (sort_id % loaded_db["metadata"]["chunk_size"]) * len(header)
-    end = start + len(header)
-    data = chunk[start:end]
+    chunk_size = loaded_db["metadata"]["chunk_size"]
+    num_records = len(chunk) // len(header)
 
-    result = {}
-    for i, field_name in enumerate(header):
-        if "loaded_maps" in loaded_db and field_name in loaded_db["loaded_maps"]:
-            result[field_name] = loaded_db["loaded_maps"][field_name]["index"][data[i]]
-        else:
-            value = data[i]
-            if field_name in [
-                "relatedPublications",
-                "childrenPublication",
-            ] and isinstance(value, list):
-                parsed_publications = []
-                for pub in value:
-                    if pub and isinstance(pub, str):
-                        parsed_pub = _parse_related_publication(pub)
-                        if parsed_pub:
-                            parsed_publications.append(parsed_pub)
-                value = parsed_publications
-            result[field_name] = value
+    results = []
+    for record_idx in range(num_records):
+        start = record_idx * len(header)
+        end = start + len(header)
+        data = chunk[start:end]
 
-    result["$foedb:id"] = sort_id
-    return result
+        result = {}
+        for i, field_name in enumerate(header):
+            if "loaded_maps" in loaded_db and field_name in loaded_db["loaded_maps"]:
+                result[field_name] = loaded_db["loaded_maps"][field_name]["index"][
+                    data[i]
+                ]
+            else:
+                value = data[i]
+                if field_name in [
+                    "relatedPublications",
+                    "childrenPublication",
+                ] and isinstance(value, list):
+                    parsed_publications = []
+                    for pub in value:
+                        if pub and isinstance(pub, str):
+                            parsed_pub = _parse_related_publication(pub)
+                            if parsed_pub:
+                                parsed_publications.append(parsed_pub)
+                    value = parsed_publications
+                result[field_name] = value
+
+        result["$foedb:id"] = chunk_id * chunk_size + record_idx
+        results.append(result)
+
+    return results
 
 
 def _load_last_publications(url: str, updates_type: str) -> List[Dict]:
@@ -219,7 +231,7 @@ def _load_publications_db(
     update_type: RegUpdateTypes, pub_type: int, amount_to_fetch: int = 10
 ) -> List[Dict]:
     """Internal function to load publications from database."""
-    releases = _fetch_foe_db_data(amount_to_fetch=5000)  # Returns descending by date
+    releases = _fetch_foe_db_data(amount_to_fetch=5_000)  # Returns descending by date
     matching_releases = []
 
     for release in releases:
@@ -251,12 +263,13 @@ def _parse_db_publications_as_publication(
     )
 
 
+# Cache the function for 5 minutes.
+@time_cache(5 * 60)
 def _fetch_foe_db_data(
     amount_to_fetch: int = 10,
 ) -> List[Dict]:
     """Fetches data from FoeDB with support for parsing related publications."""
     try:
-
         loaded_db = {}
 
         # Load database metadata
@@ -270,9 +283,9 @@ def _fetch_foe_db_data(
         for index in loaded_db["metadata"]["indexes"]:
             index_values = _fetch_json(_get_url("index", loaded_db, key=index))
             loaded_db["indexes"][index] = {}
-            for idx, index_value in enumerate(index_values):
+            for chunk_idx, index_value in enumerate(index_values):
                 loaded_db["indexes"][index][index_value["value"]] = {
-                    "index_value_id": idx,
+                    "index_value_id": chunk_idx,
                     "total_records": index_value["total_records"],
                     "first_sort_id_per_chunk": index_value["first_sort_id_per_chunk"],
                     "last_sort_id_per_chunk": index_value["last_sort_id_per_chunk"],
@@ -283,9 +296,15 @@ def _fetch_foe_db_data(
         # Fetch items
         total_records = loaded_db["metadata"]["total_records"]
         end_idx = min(amount_to_fetch, total_records)
-        all_items = [
-            _get_data_by_id(idx, loaded_db) for idx in range(round(end_idx / 250))
-        ]
+        all_items = []
+        chunk_amount = round(
+            loaded_db["metadata"]["total_records"] / loaded_db["metadata"]["chunk_size"]
+        )
+        for chunk_idx in range(chunk_amount):
+            if chunk_idx > chunk_amount:
+                break
+            chunk_items = _get_data_by_id(chunk_idx, loaded_db)
+            all_items += chunk_items
         log.info(f"Fetched {end_idx} items out of {total_records} total records")
 
         return all_items
