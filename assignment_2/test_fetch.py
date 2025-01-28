@@ -1,11 +1,59 @@
 import json
 from typing import Dict, List, Optional, Any
 from json import loads
+import csv
+import io
 from utils import load_page_content
 
-def fetch_foe_db_data(host: str = "https://www.ecb.europa.eu/foedb/dbs/foedb", database_name: str = "publications.en", batch_size:int=100000) -> List[Dict]:
+def parse_related_publication(raw_data: str) -> Dict:
     """
-    Fetch all data from FoeDB in a single function with fixed batch size of 100000
+    Parse a single related publication string into a structured dictionary.
+    """
+    try:
+        # Use CSV reader to properly handle quoted fields
+        reader = csv.reader(io.StringIO(raw_data))
+        fields = next(reader)  # Get the single row
+        
+        # Extract the known fields
+        pub_id = fields[0]
+        timestamp = fields[1]
+        year = fields[2]
+        month = fields[3]
+        day = fields[4]
+        
+        # Parse the PDF URLs list (field 9)
+        try:
+            pdf_urls = json.loads(fields[9].replace('\\"', '"'))
+        except (json.JSONDecodeError, IndexError):
+            pdf_urls = []
+            
+        # Parse the metadata JSON (field 10)
+        try:
+            metadata = json.loads(fields[10].replace('\\"', '"'))
+        except (json.JSONDecodeError, IndexError):
+            metadata = {}
+            
+        # Create structured output
+        return {
+            "publicationId": pub_id,
+            "timestamp": timestamp,
+            "date": {
+                "year": year,
+                "month": month,
+                "day": day
+            },
+            "pdfUrls": pdf_urls,
+            "metadata": metadata
+        }
+    except Exception as e:
+        print(f"Error parsing related publication: {e}")
+        return {}
+
+def fetch_foe_db_data(host: str = "https://www.ecb.europa.eu/foedb/dbs/foedb", 
+                     database_name: str = "publications.en", 
+                     amount_to_fetch:int=10) -> List[Dict]:
+    """
+    Fetch all data from FoeDB with support for parsing related publications
     """
     try:
         # Initialize basic configurations
@@ -22,7 +70,8 @@ def fetch_foe_db_data(host: str = "https://www.ecb.europa.eu/foedb/dbs/foedb", d
             txt = load_page_content(url)
             return loads(txt)
             
-        def get_url(request: str, key: Optional[str] = None, value: Optional[Any] = None, item: Optional[Any] = None) -> str:
+        def get_url(request: str, key: Optional[str] = None, 
+                   value: Optional[Any] = None, item: Optional[Any] = None) -> str:
             db_root = f"{config['host']}/{config['database_name']}/"
             
             if request == "versions":
@@ -62,7 +111,17 @@ def fetch_foe_db_data(host: str = "https://www.ecb.europa.eu/foedb/dbs/foedb", d
                 if "loaded_maps" in loaded_db and field_name in loaded_db["loaded_maps"]:
                     result[field_name] = loaded_db["loaded_maps"][field_name]["index"][data[i]]
                 else:
-                    result[field_name] = data[i]
+                    value = data[i]
+                    # Special handling for relatedPublications field
+                    if field_name in ["relatedPublications", "childrenPublication"] and isinstance(value, list):
+                        parsed_publications = []
+                        for pub in value:
+                            if pub and isinstance(pub, str):
+                                parsed_pub = parse_related_publication(pub)
+                                if parsed_pub:
+                                    parsed_publications.append(parsed_pub)
+                        value = parsed_publications
+                    result[field_name] = value
                     
             result["$foedb:id"] = sort_id
             return result
@@ -92,11 +151,10 @@ def fetch_foe_db_data(host: str = "https://www.ecb.europa.eu/foedb/dbs/foedb", d
         total_records = loaded_db["metadata"]["total_records"]
         all_items = []
         
-        for start_idx in range(0, total_records, batch_size):
-            end_idx = min(start_idx + batch_size, total_records)
-            batch_items = [get_data_by_id(idx) for idx in range(start_idx, end_idx)]
-            all_items.extend(batch_items)
-            print(f"Fetched items {start_idx} to {end_idx} of {total_records}")
+        # Fetch only amount_to_fetch items
+        end_idx = min(amount_to_fetch, total_records)
+        all_items = [get_data_by_id(idx) for idx in range(end_idx)]
+        print(f"Fetched {end_idx} items out of {total_records} total records")
         
         return all_items
         
@@ -107,5 +165,7 @@ def fetch_foe_db_data(host: str = "https://www.ecb.europa.eu/foedb/dbs/foedb", d
 if __name__ == "__main__":
     items = fetch_foe_db_data()
     print(f"Successfully fetched {len(items)} items")
-    with open("database_items.json", "w") as f:
-        json.dump(items, f, indent=2)
+    
+    # Save with nice formatting and ensure_ascii=False for proper character handling
+    with open("database_items.json", "w", encoding='utf-8') as f:
+        json.dump(items, f, indent=2, ensure_ascii=False)

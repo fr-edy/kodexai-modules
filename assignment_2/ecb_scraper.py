@@ -6,7 +6,7 @@ from urllib.parse import urljoin
 from lxml.etree import HTML
 
 from models import Regulators, RegUpdateTypes, RegulatorPublication
-from kodexai.utils import load_page_content
+from utils import load_page_content
 
 log = logging.getLogger(__name__)
 
