@@ -43,7 +43,7 @@ class Regulators(str, Enum):
     def base_url(self) -> str:
         return {
             Regulators.MAS: "https://www.mas.gov.sg",
-            Regulators.ECB: "https://www.bankingsupervision.europa.eu/"
+            Regulators.ECB: "https://www.ecb.europa.eu/"
         }[self]
 
 
