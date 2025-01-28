@@ -5,16 +5,15 @@ from utils import load_page_content
 from json import loads
 
 
-@dataclass
-class DatabaseConfig:
-    foedb_host: str
-    database_name: str
-    database_version: Optional[str] = None
-
 
 class FoeDBFetcher:
-    def __init__(self, config: DatabaseConfig):
-        self.config = config
+    def __init__(self, host:str, database_name:str):
+        self.config = {
+            "host": host,
+            "database_name": database_name,
+            "database_version": None,
+        }
+        
         self.loaded_db = {}
         self.chunk_cache = {}
 
@@ -31,7 +30,7 @@ class FoeDBFetcher:
         item: Optional[Any] = None,
     ) -> str:
         """Generate URLs for different types of requests."""
-        db_root = f"{self.config.foedb_host}/{self.config.database_name}/"
+        db_root = f"{self.config["host"]}/{self.config["database_name"]}/"
 
         if request == "versions":
             return f"{db_root}versions.json"
@@ -51,11 +50,6 @@ class FoeDBFetcher:
             return f"{versioned_root}data/{key}/chunk_{value}.json"
 
         raise ValueError(f"Unknown request type: {request}")
-
-    def refresh_db_metadata(self):
-        """Refresh database metadata."""
-        self.chunk_cache = {}
-        self.load_db()
 
     def get_chunk_id(self, sort_id: int) -> int:
         """Calculate chunk ID from sort ID."""
@@ -113,7 +107,7 @@ class FoeDBFetcher:
 
         # Set version and hash
         self.loaded_db["database_version"] = (
-            self.config.database_version or versions[0]["version"]
+            self.config["database_version"] or versions[0]["version"]
         )
         self.loaded_db["database_hash"] = versions[0]["hash"]
 
@@ -158,15 +152,12 @@ class FoeDBFetcher:
 
 
 def main():
-    config = DatabaseConfig(
-        foedb_host="https://www.ecb.europa.eu/foedb/dbs/foedb",
-        database_name="publications.en",
-    )
 
-    fetcher = FoeDBFetcher(config)
+
+    fetcher = FoeDBFetcher("https://www.ecb.europa.eu/foedb/dbs/foedb", "publications.en")
 
     try:
-        items = fetcher.fetch_all_items()
+        items = fetcher.fetch_all_items(batch_size=100000)
         print(f"Successfully fetched {len(items)} items")
 
         # Example: Save to JSON file
