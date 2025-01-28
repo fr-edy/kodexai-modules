@@ -24,7 +24,7 @@ UPDATE_TYPE_PRESS_RELEASE = "PRESS_RELEASE"
 
 # News publication types constants
 NEWS_TYPE_PRESS_RELEASE = 1  # Press releases / Press 
-NEWS_TYPE_LETTER_TO_MEPs = 18  # Letter to MEPs
+NEWS_TYPE_LETTER_TO_MEPS = 18  # Letter to MEPs
 
 def create_publication(
     web_title: str,
@@ -98,7 +98,7 @@ def _load_last_publications(
 
 def load_publications_from_db(update_type: RegUpdateTypes, amount_to_fetch: int = 10) -> List[Dict]:
     """Loads the last publications from the ECB database."""
-    pub_type = NEWS_TYPE_LETTER_TO_MEPs if update_type == UPDATE_TYPE_REGULATION else NEWS_TYPE_PRESS_RELEASE
+    pub_type = NEWS_TYPE_LETTER_TO_MEPS if update_type == UPDATE_TYPE_REGULATION else NEWS_TYPE_PRESS_RELEASE
     return _load_publications_db(update_type, pub_type, amount_to_fetch)
 
 def _load_publications_db(update_type: RegUpdateTypes, pub_type: int, amount_to_fetch: int = 10) -> List[Dict]:
@@ -152,6 +152,18 @@ def _fetch_foe_db_data(
             
         def get_url(request: str, key: Optional[str] = None, 
                    value: Optional[Any] = None, item: Optional[Any] = None) -> str:
+            """Constructs URLs for different FoeDB API endpoints based on the request type.
+            
+            Args:
+            request: Type of request (versions, metadata, index, data)
+            key: Optional key for index/data requests
+            value: Optional value for index requests or chunk number for data
+            item: Optional chunk number for index requests
+            
+            Returns:
+            str: Constructed URL for the requested endpoint
+            """
+
             db_root = f"{config['host']}/{config['database_name']}/"
             
             if request == "versions":
@@ -172,12 +184,40 @@ def _fetch_foe_db_data(
             raise ValueError(f"Unknown request type: {request}")
             
         def get_chunk(chunk_id: int) -> List:
+            """
+            Retrieves a chunk of data from cache or fetches it from the server if not cached.
+
+            Args:
+                chunk_id (int): The ID of the chunk to retrieve.
+
+            Returns:
+                List: The requested data chunk.
+
+            Description:
+                This function implements a caching mechanism for data chunks. If the requested chunk
+                is not in cache, it calculates the chunk group ID and fetches the data from server,
+                storing it in cache before returning. If the chunk is already cached, it returns
+                the cached version directly.
+            """
             if chunk_id not in chunk_cache:
                 chunk_group_id = chunk_id // loaded_db["metadata"]["chunk_group_size"]
                 chunk_cache[chunk_id] = fetch_json(get_url("data", str(chunk_group_id), chunk_id))
             return chunk_cache[chunk_id]
             
         def get_data_by_id(sort_id: int) -> Dict:
+            """
+            Retrieves data from database by sort ID and constructs a dictionary with mapped values.
+            The function gets a chunk of data based on the sort ID, maps the values according to loaded maps,
+            and handles special cases for publication-related fields.
+            Args:
+                sort_id (int): The sorting ID used to locate the data in the database.
+            Returns:
+                Dict: A dictionary containing:
+                    - Mapped values from the database using header field names as keys
+                    - Original values for unmapped fields
+                    - Parsed publication data for 'relatedPublications' and 'childrenPublication' fields
+                    - Original sort_id as '$foedb:id'
+            """
             chunk_id = sort_id // loaded_db["metadata"]["chunk_size"]
             chunk = get_chunk(chunk_id)
             
