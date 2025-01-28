@@ -16,10 +16,6 @@ log = logging.getLogger(__name__)
 # Constants to replace enums
 REGULATOR_ECB = {"name": Regulators.ECB, "base_url": Regulators.ECB.base_url}
 
-# Publication types constants
-UPDATE_TYPE_REGULATION = "REGULATION"
-UPDATE_TYPE_PRESS_RELEASE = "PRESS_RELEASE"
-
 # News publication types constants
 NEWS_TYPE_PRESS_RELEASE = 1  # Press releases / Press
 NEWS_TYPE_LETTER_TO_MEPS = 18  # Letter to MEPs
@@ -221,7 +217,7 @@ def load_publications_from_db(
     """Loads the last publications from the ECB database."""
     pub_type = (
         NEWS_TYPE_LETTER_TO_MEPS
-        if update_type == UPDATE_TYPE_REGULATION
+        if update_type == RegUpdateTypes.REGULATION
         else NEWS_TYPE_PRESS_RELEASE
     )
     return _load_publications_db(update_type, pub_type, amount_to_fetch)
