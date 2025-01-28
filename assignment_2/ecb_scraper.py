@@ -26,7 +26,7 @@ UPDATE_TYPE_PRESS_RELEASE = "PRESS_RELEASE"
 NEWS_TYPE_PRESS_RELEASE = 1  # Press releases / Press 
 NEWS_TYPE_LETTER_TO_MEPS = 18  # Letter to MEPs
 
-def create_publication(
+def _create_publication(
     web_title: str,
     published_at: datetime,
     web_url: str,
@@ -82,7 +82,7 @@ def _load_last_publications(
         ]
 
         # Create publication dictionary with normalized text
-        publication = create_publication(
+        publication = _create_publication(
             web_title=unicodedata.normalize("NFKC", title_text),
             published_at=datetime.strptime(date_text, "%d %B %Y"),
             web_url=web_url,
@@ -116,7 +116,7 @@ def _load_publications_db(update_type: RegUpdateTypes, pub_type: int, amount_to_
 
 def _parse_db_publications_as_publication(update_type: RegUpdateTypes, release: Dict) -> Dict:
     """Converts a database release to a publication dictionary."""
-    return create_publication(
+    return _create_publication(
         web_title=release["publicationProperties"]["Title"],
         published_at=datetime.fromtimestamp(release["pub_timestamp"]),
         web_url=urljoin(REGULATOR_ECB["base_url"], release["documentTypes"][0]),
