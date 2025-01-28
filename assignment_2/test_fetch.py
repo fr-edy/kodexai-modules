@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Any
 from json import loads
 from utils import load_page_content
 
-def fetch_foe_db_data(host: str = "https://www.ecb.europa.eu/foedb/dbs/foedb", database_name: str = "publications.en") -> List[Dict]:
+def fetch_foe_db_data(host: str = "https://www.ecb.europa.eu/foedb/dbs/foedb", database_name: str = "publications.en", batch_size:int=100000) -> List[Dict]:
     """
     Fetch all data from FoeDB in a single function with fixed batch size of 100000
     """
@@ -91,7 +91,6 @@ def fetch_foe_db_data(host: str = "https://www.ecb.europa.eu/foedb/dbs/foedb", d
         # Fetch all items
         total_records = loaded_db["metadata"]["total_records"]
         all_items = []
-        batch_size = 100000
         
         for start_idx in range(0, total_records, batch_size):
             end_idx = min(start_idx + batch_size, total_records)
