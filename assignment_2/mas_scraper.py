@@ -9,7 +9,6 @@ from models import Regulators, RegUpdateTypes, RegulatorPublication
 from utils import load_page_content
 
 log = logging.getLogger(__name__)
-log.setLevel(logging.ERROR)
 
 REGULATOR = Regulators.MAS
 
