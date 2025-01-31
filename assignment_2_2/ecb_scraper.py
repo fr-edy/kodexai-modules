@@ -71,10 +71,11 @@ def _parse_publications(text: str, type: RegUpdateTypes) -> List[RegulatorPublic
         title_element = dd.xpath(".//a")
         title_text = title_element[0].text.strip()
         web_url = urljoin(Regulators.ECB.base_url, title_element[0].get("href"))
-        related_urls = [
+        related_urls = _filter_related_urls([
             urljoin(Regulators.ECB.base_url, href.strip())
             for href in dd.xpath(".//dl//a/@href")
-        ]
+        ], Regulators.ECB.base_url)
+        
         publication = RegulatorPublication(
             web_title=unicodedata.normalize("NFKC", title_text),
             published_at=datetime.strptime(date_text, "%d %B %Y"),
@@ -90,3 +91,19 @@ def _parse_publications(text: str, type: RegUpdateTypes) -> List[RegulatorPublic
 
     log.info(f"Found {len(parsed_publications)} publications")
     return parsed_publications
+
+def _filter_related_urls(urls: List[str], base_url: str) -> List[str]:
+    """Filter related URLs to only include unique English (.en.) version and remove duplicate urls.
+
+    e.g. 
+    this also filtered out as duplicates because the url query params are different but the content is the same:
+        https://www.ecb.europa.eu/press/pdf/pis/ecb.pis231109_annex~f2f3134380.en.pdf
+        https://www.ecb.europa.eu/press/pdf/pis/ecb.pis231109_annex~f2f3134380.en.pdf?60b65716cffd0fe791dec61726de5898
+    """
+    clean_urls = set()
+    for url in urls:
+        # Remove query parameters if present
+        clean_url = url.split('?')[0]
+        if '.en.' in clean_url:
+            clean_urls.add(clean_url)
+    return list(clean_urls)

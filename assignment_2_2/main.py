@@ -80,8 +80,9 @@ def _load_ecb_publications(regulator_type: RegUpdateTypes, namespace: str, links
 def ecb_load_regulations():
     years_links = [
         (f"https://www.ecb.europa.eu/press/accounts/{year}/html/index_include.en.html", False)
-        for year in range(2015, datetime.now().year + 1)
-    ].reverse() # Reverse the list to start with the current year
+        for year in range(2024, datetime.now().year + 1) # 2015 is the earliest year available, 2024 is chosen as there are more than 10 publications from 2024 onwards
+    ] 
+    years_links.reverse() # Reverse the list to start with the current year
     
     links_config = years_links + [
         ("https://www.ecb.europa.eu/press/pubbydate/html/index.en.html?name_of_publication=Letters%20to%20MEPs", True)
