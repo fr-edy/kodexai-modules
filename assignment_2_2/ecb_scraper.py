@@ -23,7 +23,7 @@ def load_last_publications(
 
 def _load_last_publications_server_side_rendered(
     url: str, updates_type: RegUpdateTypes
-) -> List[Dict]:
+) -> List[RegulatorPublication]:
     """Loads and parses the most recent publications from the ECB website."""
     try:
         resp_text = load_page_content(
@@ -74,7 +74,7 @@ def _parse_publications(text: str, type: RegUpdateTypes) -> List[RegulatorPublic
         related_urls = _filter_related_urls([
             urljoin(Regulators.ECB.base_url, href.strip())
             for href in dd.xpath(".//dl//a/@href")
-        ], Regulators.ECB.base_url)
+        ])
         
         publication = RegulatorPublication(
             web_title=unicodedata.normalize("NFKC", title_text),
@@ -92,7 +92,7 @@ def _parse_publications(text: str, type: RegUpdateTypes) -> List[RegulatorPublic
     log.info(f"Found {len(parsed_publications)} publications")
     return parsed_publications
 
-def _filter_related_urls(urls: List[str], base_url: str) -> List[str]:
+def _filter_related_urls(urls: List[str]) -> List[str]:
     """Filter related URLs to only include unique English (.en.) version and remove duplicate urls.
 
     e.g. 
