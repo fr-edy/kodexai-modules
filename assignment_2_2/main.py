@@ -81,7 +81,7 @@ def ecb_load_regulations():
     years_links = [
         (f"https://www.ecb.europa.eu/press/accounts/{year}/html/index_include.en.html", False)
         for year in range(2015, datetime.now().year + 1)
-    ]
+    ].reverse() # Reverse the list to start with the current year
     
     links_config = years_links + [
         ("https://www.ecb.europa.eu/press/pubbydate/html/index.en.html?name_of_publication=Letters%20to%20MEPs", True)
