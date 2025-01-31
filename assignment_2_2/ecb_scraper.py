@@ -66,7 +66,16 @@ def _parse_publications(text: str, type: RegUpdateTypes) -> List[RegulatorPublic
 
     html = HTML(text)
     parsed_publications = []
-    for dt, dd in zip(html.xpath(".//dt"), html.xpath(".//dd")):
+    dlItem = html.xpath("//dl") 
+
+    # Check if the first child in /html/body is a dt element
+    first_child_dt = html.xpath("/html/body/*[1][self::dt]")
+    if first_child_dt:
+        # Use body as container if dt is direct child
+        dlItem = html.xpath("/html/body")
+    
+    # Get only direct children dt and dd elements of dl using child axis
+    for dt, dd in zip(dlItem[0].xpath("./dt"), dlItem[0].xpath("./dd")):
         date_text = dt.xpath(".//text()")[0].strip()
         title_element = dd.xpath(".//a")
         title_text = title_element[0].text.strip()
