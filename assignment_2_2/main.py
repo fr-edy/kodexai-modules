@@ -102,7 +102,7 @@ def process_publication(publication: RegulatorPublication, namespace: str):
     """Dummy method to imitate the real flow."""
     pass
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    #ecb_load_regulations()
-    ecb_load_news()
+# if __name__ == "__main__":
+#     logging.basicConfig(level=logging.INFO)
+#     ecb_load_regulations()
+#     ecb_load_news()
